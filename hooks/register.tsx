@@ -1,5 +1,7 @@
 import type { Register } from 'claude-code'
 
+type AgentRow = { id: string; description: string; type: string; status: string }
+
 type Seg = { t0: number; t1: number; from: number; to: number }
 
 type Avatar = {
@@ -789,10 +791,47 @@ export const register: Register = (on, options) => {
 
   const mainAv = make('main', 'main', COLORS[0] ?? '#ff8a1f')
 
+  // Agents the mod did not see start (spawned before it loaded, or before a reload
+  // wiped its memory) are picked up from the session's own list.
+  const adopt = (id: string, name: string, working: boolean) => {
+    const a = make(id, name, COLORS[colorIx++ % COLORS.length] ?? '#37c871')
+    a.spawnAt = Date.now()
+    if (working) startWork(a, Date.now())
+    agents.set(id, a)
+    return a
+  }
+
+  // Bring the avatars in line with the session's agent list; true when anything changed.
+  const applyList = (list: AgentRow[]) => {
+    const now = Date.now()
+    let changed = false
+    for (const info of list) {
+      const isOn = info.status === 'running' || info.status === 'pending' || info.status === 'waiting'
+      const a = agents.get(info.id)
+      if (!a) {
+        if (isOn) {
+          adopt(info.id, info.description || info.type, true)
+          changed = true
+        }
+      } else if (a.isWorking && !isOn) {
+        stopWork(a, now)
+        changed = true
+      } else if (!a.isWorking && isOn) {
+        startWork(a, now)
+        changed = true
+      }
+    }
+    return changed
+  }
+
   on('session.start', async ($, e, next) => {
+    void $.agent.list().then(applyList).then(c => c && $.ui.invalidate('ui.render'), () => undefined)
+    let ticks = 0
     $.clock.every(FRAME_MS, () => {
       const now = Date.now()
       let changed = false
+      ticks += 1
+      if (ticks % 8 === 0) void $.agent.list().then(applyList).then(c => c && $.ui.invalidate('ui.render'), () => undefined)
       for (const [id, a] of agents) {
         if (!a.isWorking && a.doneAt && !a.leaveAt && now - a.doneAt > LINGER_MS) {
           a.leaveAt = now
@@ -822,7 +861,16 @@ export const register: Register = (on, options) => {
   })
 
   on('tool.call', async ($, e, next) => {
-    const a = e.agentId ? agents.get(e.agentId) : undefined
+    let a = e.agentId ? agents.get(e.agentId) : undefined
+    if (!a && e.agentId) {
+      let name = 'agent'
+      try {
+        name = (await $.agent.list()).find(i => i.id === e.agentId)?.description || name
+      } catch {
+        // the list is only for the name
+      }
+      a = adopt(e.agentId, name, true)
+    }
     if (a) {
       a.tool = e.tool
       startWork(a, Date.now())
