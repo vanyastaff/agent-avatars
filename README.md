@@ -54,6 +54,20 @@ All 13 scenes (the animated parts are in the GIFs above):
 
 Each agent keeps its own colour (for the anime characters that is the hair colour), so you can tell them apart in any skin.
 
+## Moods and sounds
+
+Agents react to how things end, without reading tool calls or prompts:
+
+- `✓ done`: the turn ended normally, the character hops happily (`^ ^` eyes).
+- `! failed`: the turn ended with an error or a refusal, the character shakes (`x x` eyes).
+- `stopped`: the turn was interrupted.
+- `? your turn`: Claude is asking you a question (the main character waits while the dialog is open).
+- `? waiting`: a subagent is blocked on approval or on something it started.
+
+The main character's mood clears after a few seconds; a subagent keeps it until it leaves the scene.
+
+Short 8-bit blips can play when an agent appears, finishes, fails or asks you something. They are off by default (`sound`: `off` / `on`). The engine plays them through `afplay`, so they work on macOS only; on Windows and Linux the option does nothing.
+
 ## Troubleshooting
 
 Run `/avatars` to see which agents the scene is drawing next to the agents the session itself reports. If an agent is in the second list but not the first, please open an issue with that output.

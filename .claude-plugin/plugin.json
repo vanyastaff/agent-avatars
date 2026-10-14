@@ -1,6 +1,6 @@
 {
   "name": "agent-avatars",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Pixel-art characters (robots, cats, dragons, anime) for the main agent and every subagent: they wander a little scene above the prompt while working, show what they are doing, and sleep when done.",
   "author": {
     "name": "vanyastaff"
@@ -74,6 +74,16 @@
         "static",
         "action",
         "ai"
+      ]
+    },
+    "sound": {
+      "type": "string",
+      "title": "Sounds",
+      "description": "Short 8-bit blips when an agent appears, finishes, fails or asks you a question. Off by default. The engine plays them with afplay, so this works on macOS only.",
+      "default": "off",
+      "options": [
+        "off",
+        "on"
       ]
     }
   }

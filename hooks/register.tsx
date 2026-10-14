@@ -12,6 +12,10 @@ type Avatar = {
   isWorking: boolean
   tool: string
   doneAt: number
+  mood: string // happy | sad | stop, how its last turn ended
+  moodAt: number
+  waiting: boolean // blocked on you or on something it started
+  askingAt: number // the main agent: when a question dialog was last drawn
   desc: string
   action: string
   recent: string[]
@@ -30,9 +34,11 @@ type Avatar = {
   total: number
 }
 
-const VERSION = '0.3.0'
+const VERSION = '0.4.0'
 const COLORS = ['#ff8a1f', '#37c871', '#b45cff', '#2fa8ff', '#ffd23f', '#ff5c7a', '#e6e6e6']
 const LINGER_MS = 15000
+const MOOD_MS = 5000
+const ASK_TTL = 1500
 const EXIT_MS = 1400
 const ENTER_MS = 700
 const FRAME_MS = 250
@@ -86,20 +92,23 @@ const posAt = (a: Avatar, sec: number) => {
 
 const startWork = (a: Avatar, now: number) => {
   a.leaveAt = 0
+  a.waiting = false
   if (a.isWorking) return
   a.isWorking = true
+  a.mood = ''
+  a.doneAt = 0
   a.epoch += 1
   a.pathStart = now
   makePath(a)
 }
 
-const stopWork = (a: Avatar, now: number) => {
+const stopWork = (a: Avatar, now: number, isWaiting = false) => {
   if (!a.isWorking) return
   a.restX = posAt(a, (now - a.pathStart) / 1000)
   a.isWorking = false
   a.tool = ''
   a.thought = ''
-  a.doneAt = now
+  if (!isWaiting) a.doneAt = now
 }
 
 const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
@@ -118,6 +127,27 @@ const activity = (tool: string) => {
 // How agents are labelled. names: static (the task text), short (trimmed, free) or ai
 // (a small model coins a name). thoughts: static (reading...), action (what it just
 // did, free) or ai (a small model summarises the last few actions).
+// Sounds are opt-in (option `sound`). The engine plays them through afplay, so only on macOS.
+let SOUND = false
+let lastPlay = 0
+const CLIPS: Record<string, string> = {
+  spawn: 'sounds/spawn.wav',
+  done: 'sounds/done.wav',
+  error: 'sounds/error.wav',
+  ask: 'sounds/ask.wav',
+}
+
+const play = async ($: any, name: 'spawn' | 'done' | 'error' | 'ask') => {
+  const now = Date.now()
+  if (!SOUND || now - lastPlay < 350) return
+  lastPlay = now
+  try {
+    await $.audio.play({ asset: CLIPS[name] as string }, { gain: 0.6 })
+  } catch {
+    // no player on this system, or the clip would not play: stay quiet
+  }
+}
+
 let NAMES = 'static'
 let THOUGHTS = 'static'
 
@@ -151,6 +181,17 @@ const describeAction = (tool: string, input: Record<string, unknown>) => {
   if (tool === 'Agent' || tool === 'Task') return clip('ask ' + str('description'))
   return clip(tool)
 }
+
+// What a resting avatar says: how its turn ended, or that it waits for someone.
+const moodLabel = (a: Avatar) => {
+  if (a.waiting) return a.id === 'main' ? '? your turn' : '? waiting'
+  if (a.mood === 'happy') return '✓ done'
+  if (a.mood === 'sad') return '! failed'
+  if (a.mood === 'stop') return 'stopped'
+  return ''
+}
+
+const MOOD_STROKE: Record<string, string> = { happy: '#2f9a5a', sad: '#d9463a', stop: '#888888' }
 
 // The text of a speech bubble, by the chosen mode.
 const bubbleText = (a: Avatar) => {
@@ -310,15 +351,26 @@ const SKINS: Record<string, Skin> = {
 }
 const SKIN_IDS = Object.keys(SKINS)
 
-const robotBody = (skin: Skin, color: string, isWorking: boolean) => {
+const EYES_HAPPY = ['....E....E....', '...E.E..E.E...']
+const EYES_SAD = ['...E.E..E.E...', '....E....E....', '...E.E..E.E...']
+
+const robotBody = (skin: Skin, color: string, isWorking: boolean, mood = '') => {
   const c = skin.palette(color)
-  const eyes = isWorking
+  const eyes = mood === 'happy' && !isWorking
+    ? pixels(EYES_HAPPY, c, skin.eyeOy)
+    : mood === 'sad' && !isWorking
+      ? pixels(EYES_SAD, c, skin.eyeOy)
+      : isWorking
     ? pixels(skin.eyesWork, c, skin.eyeOy)
     : `<g><animateTransform attributeName="transform" type="scale" values="1 1;1 1;1 0.15;1 1" keyTimes="0;0.9;0.94;1" dur="4s" repeatCount="indefinite"/>${pixels(skin.eyesIdle, c, skin.eyeOy)}</g>`
   const legs = isWorking
     ? `<g>${steps('0 0;0 -3', '0.4s')}${pixels(skin.legsA, c)}</g><g>${steps('0 -3;0 0', '0.4s')}${pixels(skin.legsB, c)}</g>`
     : pixels(skin.legsStill, c)
-  const hop = isWorking ? steps('0 0;0 -3', '0.4s') : steps('0 0;0 -3;0 0', '2.4s', 'keyTimes="0;0.5;0.56"')
+  const hop = isWorking || mood === 'happy'
+    ? steps('0 0;0 -3', '0.4s')
+    : mood === 'sad'
+      ? steps('0 0;2 0;-2 0;0 0', '0.3s')
+      : steps('0 0;0 -3;0 0', '2.4s', 'keyTimes="0;0.5;0.56"')
   const spark = isWorking
     ? `<g transform="translate(${5 * U} ${-3 * U})" fill="#ffd23f"><rect x="${U}" y="0" width="${U}" height="${3 * U}"/><rect x="0" y="${U}" width="${3 * U}" height="${U}"/><animate attributeName="opacity" values="1;0" dur="0.6s" calcMode="discrete" repeatCount="indefinite"/></g>`
     : ''
@@ -331,12 +383,16 @@ const tagSvg = (a: Avatar) => {
   const top = GY - 10 * U - 20
   let s = `<g shape-rendering="crispEdges"><rect x="${-w / 2}" y="${top}" width="${w}" height="12" fill="#000" opacity="0.75"/><rect x="${-w / 2}" y="${top}" width="${w}" height="2" fill="${a.color}"/></g>
 <text x="0" y="${top + 10}" text-anchor="middle" font-family="${MONO}" font-weight="bold" font-size="9" fill="#fff">${esc(name)}</text>`
-  if (a.isWorking) {
-    const label = bubbleText(a)
+  const bubble = (label: string, stroke: string) => {
     const bw = label.length * 5.4 + 10
     const by = top - 15
-    s += `<g shape-rendering="crispEdges"><rect x="${-bw / 2}" y="${by}" width="${bw}" height="12" fill="#fff" stroke="#222" stroke-width="1"/><rect x="-2" y="${by + 12}" width="4" height="3" fill="#fff"/></g>
+    return `<g shape-rendering="crispEdges"><rect x="${-bw / 2}" y="${by}" width="${bw}" height="12" fill="#fff" stroke="${stroke}" stroke-width="1"/><rect x="-2" y="${by + 12}" width="4" height="3" fill="#fff"/></g>
 <text x="0" y="${by + 9}" text-anchor="middle" font-family="${MONO}" font-size="9" fill="#222">${esc(label)}</text>`
+  }
+  if (a.isWorking) {
+    s += bubble(bubbleText(a), '#222')
+  } else if (moodLabel(a)) {
+    s += bubble(moodLabel(a), a.waiting ? '#2b6fd8' : (MOOD_STROKE[a.mood] ?? '#222'))
   } else {
     const zy = GY - 10 * U - 4
     s += `<text x="${8 * U}" y="${zy}" font-family="${MONO}" font-weight="bold" font-size="10" fill="#999">z<animate attributeName="y" values="${zy};${zy - 12}" dur="2.4s" repeatCount="indefinite"/><animate attributeName="opacity" values="0.9;0" dur="2.4s" repeatCount="indefinite"/></text>
@@ -369,7 +425,7 @@ const withEffects = (a: Avatar, body: string, now: number) => {
 
 const agentSvg = (a: Avatar, now: number) => {
   const inner = `<rect x="${-7 * U}" y="${GY}" width="${14 * U}" height="${U}" fill="#888" opacity="0.4" shape-rendering="crispEdges"/>
-<g transform="translate(${-7 * U} ${GY - 10 * U})">${robotBody(SKINS[a.skin] ?? SKINS['robot']!, a.color, a.isWorking)}</g>
+<g transform="translate(${-7 * U} ${GY - 10 * U})">${robotBody(SKINS[a.skin] ?? SKINS['robot']!, a.color, a.isWorking, a.mood)}</g>
 ${tagSvg(a)}`
   if (!a.isWorking) return `<g transform="translate(${Math.round(a.restX)} 0)">${withEffects(a, inner, now)}</g>`
 
@@ -832,6 +888,7 @@ export const register: Register = (on, options) => {
   const choice = String(options['skin'] ?? 'robot')
   NAMES = ['static', 'short', 'ai'].includes(String(options['names'])) ? String(options['names']) : 'static'
   THOUGHTS = ['static', 'action', 'ai'].includes(String(options['thoughts'])) ? String(options['thoughts']) : 'static'
+  SOUND = options['sound'] === 'on'
   const scene = String(options['scene'] ?? 'auto')
   THEME = THEMES[scene] ? scene : (AUTO_SCENE[choice] ?? 'meadow')
   SKY = options['sky'] === 'filled'
@@ -847,6 +904,10 @@ export const register: Register = (on, options) => {
       id,
       name: NAMES === 'static' ? name : shorten(name),
       desc: name,
+      mood: '',
+      moodAt: 0,
+      waiting: false,
+      askingAt: 0,
       action: '',
       recent: [],
       thought: '',
@@ -885,19 +946,41 @@ export const register: Register = (on, options) => {
   const applyList = (list: AgentRow[]) => {
     const now = Date.now()
     let changed = false
+    const seen = new Set<string>()
     for (const info of list) {
-      const isOn = info.status === 'running' || info.status === 'pending' || info.status === 'waiting'
+      seen.add(info.id)
+      const running = info.status === 'running' || info.status === 'pending'
+      const isBlocked = info.status === 'waiting'
+      const ended = info.status === 'completed' || info.status === 'failed' || info.status === 'killed'
       const a = agents.get(info.id)
       if (!a) {
-        if (isOn) {
-          adopt(info.id, info.description || info.type, true)
+        if (running || isBlocked) {
+          const added = adopt(info.id, info.description || info.type, running)
+          added.waiting = isBlocked
           changed = true
         }
-      } else if (a.isWorking && !isOn) {
-        stopWork(a, now)
+      } else if (isBlocked) {
+        if (a.isWorking) stopWork(a, now, true)
+        if (!a.waiting) a.waiting = true
         changed = true
-      } else if (!a.isWorking && isOn) {
+      } else if (running && !a.isWorking) {
         startWork(a, now)
+        changed = true
+      } else if (!running && a.isWorking) {
+        stopWork(a, now)
+        if (!a.mood && ended) a.mood = info.status === 'failed' ? 'sad' : info.status === 'killed' ? 'stop' : 'happy'
+        changed = true
+      } else if (a.waiting) {
+        a.waiting = false
+        changed = true
+      }
+    }
+    // One that waited and then left the list has ended: let it go.
+    for (const a of agents.values()) {
+      if (a.waiting && !seen.has(a.id) && !a.isWorking) {
+        a.waiting = false
+        a.mood = a.mood || 'happy'
+        a.doneAt = now
         changed = true
       }
     }
@@ -917,6 +1000,16 @@ export const register: Register = (on, options) => {
       let changed = false
       ticks += 1
       if (ticks % 8 === 0) void $.agent.list().then(applyList).then(c => c && $.ui.invalidate('ui.render'), () => undefined)
+      if (mainAv.mood && now - mainAv.moodAt > MOOD_MS) {
+        mainAv.mood = ''
+        changed = true
+      }
+      const asking = now - mainAv.askingAt < ASK_TTL
+      if (asking !== mainAv.waiting) {
+        mainAv.waiting = asking
+        changed = true
+      }
+      if (asking) changed = true // keeps the question dialog drawn, so it keeps refreshing the timer
       for (const [id, a] of agents) {
         if (!a.isWorking && a.doneAt && !a.leaveAt && now - a.doneAt > LINGER_MS) {
           a.leaveAt = now
@@ -941,6 +1034,7 @@ export const register: Register = (on, options) => {
       a.spawnAt = Date.now()
       agents.set(a.id, a)
       $.ui.invalidate('ui.render')
+      void play($, 'spawn')
       if (NAMES === 'ai') {
         a.nameAsked = true
         void ask($, nameQuestion(a.desc)).then(n => {
@@ -962,7 +1056,7 @@ export const register: Register = (on, options) => {
     } catch (err) {
       engine = `  error: ${String(err)}`
     }
-    const mine = [mainAv, ...agents.values()].map(a => `  ${a.id.slice(0, 8)}  ${a.isWorking ? 'working  ' : 'idle     '} ${a.skin}: ${a.name}${a.leaveAt ? ' (leaving)' : ''}`).join('\n')
+    const mine = [mainAv, ...agents.values()].map(a => `  ${a.id.slice(0, 8)}  ${a.isWorking ? 'working  ' : 'idle     '} ${a.skin}: ${a.name}${a.mood ? ' [' + a.mood + ']' : ''}${a.waiting ? ' [waiting]' : ''}${a.leaveAt ? ' (leaving)' : ''}`).join('\n')
     return { text: `agent-avatars ${VERSION}, character ${choice}, scene ${THEME}\n\nOn the scene:\n${mine}\n\nThe session's agents:\n${engine}` }
   })
 
@@ -1012,10 +1106,28 @@ export const register: Register = (on, options) => {
   })
 
   on('turn.complete', async ($, e, next) => {
-    const a = e.agentId ? agents.get(e.agentId) : undefined
+    const a = e.agentId ? agents.get(e.agentId) : mainAv
     if (a) {
-      stopWork(a, Date.now())
+      const now = Date.now()
+      stopWork(a, now)
+      a.mood = e.reason === 'answer' ? 'happy' : e.reason === 'aborted' ? 'stop' : 'sad'
+      a.moodAt = now
       $.ui.invalidate('ui.render')
+      if (e.reason === 'answer') void play($, 'done')
+      else if (e.reason !== 'aborted') void play($, 'error')
+    }
+    return next(e)
+  })
+
+  // The question dialog is drawn while it is open; the main avatar waits for you meanwhile.
+  on('ui.render', { component: 'AskUserQuestion' }, async ($, e, next) => {
+    const now = Date.now()
+    const isFresh = now - mainAv.askingAt < ASK_TTL
+    mainAv.askingAt = now
+    if (!isFresh) {
+      mainAv.waiting = true
+      $.ui.invalidate('ui.render')
+      void play($, 'ask')
     }
     return next(e)
   })
@@ -1041,6 +1153,7 @@ export const register: Register = (on, options) => {
     const now = await $.clock.now()
     if (e.props.isWorking) startWork(mainAv, now)
     else stopWork(mainAv, now)
+    mainAv.waiting = mainAv.waiting && now - mainAv.askingAt < ASK_TTL
     const all: Avatar[] = [mainAv, ...list]
 
     if (e.surface === 'desktop' || e.surface === 'vscode') {
@@ -1078,7 +1191,7 @@ export const register: Register = (on, options) => {
               <Text color={a.color}>{pad(sp.legs)}</Text>
               {sp.hop ? null : gap}
               <Text bold>{pad(a.name)}</Text>
-              <Text dimColor>{pad(a.isWorking ? bubbleText(a) : 'idle')}</Text>
+              <Text dimColor>{pad(a.isWorking ? bubbleText(a) : moodLabel(a) || 'idle')}</Text>
             </Box>
           )
         })}
