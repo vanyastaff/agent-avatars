@@ -66,6 +66,14 @@ Agents react to how things end, without reading tool calls or prompts:
 
 The main character's mood clears after a few seconds; a subagent keeps it until it leaves the scene.
 
+### Agents talking to each other
+
+When an agent sends a message to another agent (SendMessage), a little letter flies between them and their bubbles show `→ name` and `✉ name` for a moment. Only who writes to whom is read, never the text. The main agent is addressed as `main`, others by the name their Agent call gave them or by agent id.
+
+### Pull requests and CI
+
+If your session receives GitHub events (for example while it watches a pull request), the scene reacts: `PR merged` with confetti and a toast, `PR closed`, `CI passed`, `CI failed`. Only the event's kind and outcome are read. Switch it off with `events: off`.
+
 Short 8-bit blips can play when an agent appears, finishes, fails or asks you something. They are off by default (`sound`: `off` / `on`). The engine plays them through `afplay`, so they work on macOS only; on Windows and Linux the option does nothing.
 
 ## Troubleshooting

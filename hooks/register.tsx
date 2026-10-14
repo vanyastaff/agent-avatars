@@ -16,6 +16,9 @@ type Avatar = {
   moodAt: number
   waiting: boolean // blocked on you or on something it started
   askingAt: number // the main agent: when a question dialog was last drawn
+  handle: string // the name its Agent call gave it, which SendMessage addresses
+  chat: string // what a message to or from it says on its bubble
+  chatAt: number
   desc: string
   action: string
   recent: string[]
@@ -127,6 +130,14 @@ const activity = (tool: string) => {
 // How agents are labelled. names: static (the task text), short (trimmed, free) or ai
 // (a small model coins a name). thoughts: static (reading...), action (what it just
 // did, free) or ai (a small model summarises the last few actions).
+type Msg = { from: Avatar; to: Avatar; at: number }
+type Party = { at: number; text: string; kind: 'merged' | 'ok' | 'bad' | 'info' }
+let MSGS: Msg[] = []
+let PARTY: Party | null = null
+let EVENTS = true
+const MSG_MS = 1200
+const PARTY_MS = 4500
+
 // Sounds are opt-in (option `sound`). The engine plays them through afplay, so only on macOS.
 let SOUND = false
 let lastPlay = 0
@@ -389,7 +400,9 @@ const tagSvg = (a: Avatar) => {
     return `<g shape-rendering="crispEdges"><rect x="${-bw / 2}" y="${by}" width="${bw}" height="12" fill="#fff" stroke="${stroke}" stroke-width="1"/><rect x="-2" y="${by + 12}" width="4" height="3" fill="#fff"/></g>
 <text x="0" y="${by + 9}" text-anchor="middle" font-family="${MONO}" font-size="9" fill="#222">${esc(label)}</text>`
   }
-  if (a.isWorking) {
+  if (a.chat) {
+    s += bubble(a.chat, '#b45cff')
+  } else if (a.isWorking) {
     s += bubble(bubbleText(a), '#222')
   } else if (moodLabel(a)) {
     s += bubble(moodLabel(a), a.waiting ? '#2b6fd8' : (MOOD_STROKE[a.mood] ?? '#222'))
@@ -861,10 +874,48 @@ const sky = () => {
   return `<defs><linearGradient id="sky-${THEME}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${t.sky[0]}"/><stop offset="1" stop-color="${t.sky[1]}"/></linearGradient></defs><rect width="${W}" height="${H}" rx="8" fill="url(#sky-${THEME})"/>`
 }
 
+const xOf = (a: Avatar, now: number) => (a.isWorking ? posAt(a, (now - a.pathStart) / 1000) : a.restX)
+
+// A little letter flies from the sender to the receiver.
+const envelopes = (now: number) =>
+  MSGS.map(m => {
+    const age = Math.max(0, now - m.at) / 1000
+    const d = MSG_MS / 1000
+    const y0 = GY - 10 * U - 6
+    const xs = xOf(m.from, now)
+    const xr = xOf(m.to, now)
+    return `<g shape-rendering="crispEdges"><animateTransform attributeName="transform" type="translate" values="${xs.toFixed(0)} 0;${xr.toFixed(0)} 0" dur="${d}s" begin="-${age.toFixed(2)}s" fill="freeze"/><g><animateTransform attributeName="transform" type="translate" values="-6 ${y0};-6 ${y0 - 22};-6 ${y0}" keyTimes="0;0.5;1" calcMode="spline" keySplines="0.3 0 0.7 1;0.3 0 0.7 1" dur="${d}s" begin="-${age.toFixed(2)}s" fill="freeze"/><rect width="12" height="9" fill="#ffffff" stroke="#555" stroke-width="1"/><polyline points="0,0 6,5 12,0" fill="none" stroke="#999" stroke-width="1"/></g></g>`
+  }).join('')
+
+// A banner for what happened outside the session (a PR merged, CI done), with confetti for a merge.
+const banner = (now: number) => {
+  if (!PARTY) return ''
+  const age = Math.max(0, now - PARTY.at) / 1000
+  const d = PARTY_MS / 1000
+  const fill = PARTY.kind === 'merged' ? '#7a3fd0' : PARTY.kind === 'ok' ? '#2f9a5a' : PARTY.kind === 'bad' ? '#d9463a' : '#555555'
+  const w = PARTY.text.length * 6.2 + 16
+  let s = `<g shape-rendering="crispEdges"><rect x="${W / 2 - w / 2}" y="6" width="${w}" height="14" fill="${fill}"/></g><text x="${W / 2}" y="16" text-anchor="middle" font-family="${MONO}" font-weight="bold" font-size="10" fill="#fff">${esc(PARTY.text)}</text>`
+  s = `<g><animate attributeName="opacity" values="0;1;1;0" keyTimes="0;0.06;0.85;1" dur="${d}s" begin="-${age.toFixed(2)}s" fill="freeze"/>${s}</g>`
+  if (PARTY.kind === 'merged') {
+    const r = rng(PARTY.at % 9973)
+    const colors = ['#ff6fa5', '#ffd23f', '#5fe0ff', '#7fe08a', '#b45cff', '#ff8a1f']
+    let c = ''
+    for (let i = 0; i < 40; i++) {
+      const x = Math.round(r() * W)
+      const dur = 1.6 + r() * 1.6
+      c += `<rect x="${x}" y="-6" width="3" height="3" fill="${pick(r, colors)}"><animateTransform attributeName="transform" type="translate" values="0 0;${Math.round(r() * 30 - 15)} ${H + 8}" dur="${dur.toFixed(2)}s" begin="-${Math.min(age, dur).toFixed(2)}s" fill="freeze"/><animate attributeName="opacity" values="1;1;0" keyTimes="0;0.8;1" dur="${dur.toFixed(2)}s" begin="-${Math.min(age, dur).toFixed(2)}s" fill="freeze"/></rect>`
+    }
+    s += `<g shape-rendering="crispEdges">${c}</g>`
+  }
+  return s
+}
+
 const sceneSvg = (all: Avatar[], now: number) => `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}">
 ${sky()}
 ${scenery(now)}
 ${all.map(a => agentSvg(a, now)).join('')}
+${envelopes(now)}
+${banner(now)}
 </svg>`
 
 // ---- Terminal: block-character robots --------------------------------------
@@ -889,6 +940,7 @@ export const register: Register = (on, options) => {
   NAMES = ['static', 'short', 'ai'].includes(String(options['names'])) ? String(options['names']) : 'static'
   THOUGHTS = ['static', 'action', 'ai'].includes(String(options['thoughts'])) ? String(options['thoughts']) : 'static'
   SOUND = options['sound'] === 'on'
+  EVENTS = options['events'] !== 'off'
   const scene = String(options['scene'] ?? 'auto')
   THEME = THEMES[scene] ? scene : (AUTO_SCENE[choice] ?? 'meadow')
   SKY = options['sky'] === 'filled'
@@ -904,6 +956,9 @@ export const register: Register = (on, options) => {
       id,
       name: NAMES === 'static' ? name : shorten(name),
       desc: name,
+      handle: '',
+      chat: '',
+      chatAt: 0,
       mood: '',
       moodAt: 0,
       waiting: false,
@@ -1004,6 +1059,20 @@ export const register: Register = (on, options) => {
         mainAv.mood = ''
         changed = true
       }
+      if (PARTY && now - PARTY.at > PARTY_MS) {
+        PARTY = null
+        changed = true
+      }
+      if (MSGS.some(m => now - m.at > MSG_MS)) {
+        MSGS = MSGS.filter(m => now - m.at <= MSG_MS)
+        changed = true
+      }
+      for (const a of [mainAv, ...agents.values()]) {
+        if (a.chat && now - a.chatAt > 2500) {
+          a.chat = ''
+          changed = true
+        }
+      }
       const asking = now - mainAv.askingAt < ASK_TTL
       if (asking !== mainAv.waiting) {
         mainAv.waiting = asking
@@ -1032,6 +1101,7 @@ export const register: Register = (on, options) => {
       const a = make(res.agentId, e.name ?? e.description ?? `spawned${spawned}`, COLORS[colorIx++ % COLORS.length] ?? '#37c871')
       startWork(a, Date.now())
       a.spawnAt = Date.now()
+      a.handle = e.name ?? ''
       agents.set(a.id, a)
       $.ui.invalidate('ui.render')
       void play($, 'spawn')
@@ -1115,6 +1185,54 @@ export const register: Register = (on, options) => {
       $.ui.invalidate('ui.render')
       if (e.reason === 'answer') void play($, 'done')
       else if (e.reason !== 'aborted') void play($, 'error')
+    }
+    return next(e)
+  })
+
+  // Agents talking to each other: only who sends to whom is read, never the text.
+  on('session.send', async ($, e, next) => {
+    const from = e.agentId ? agents.get(e.agentId) : mainAv
+    const to = e.to === 'main' ? mainAv : [...agents.values()].find(a => a.id === e.to || (a.handle !== '' && a.handle === e.to))
+    if (from && to && from !== to) {
+      const now = Date.now()
+      MSGS = [...MSGS, { from, to, at: now }]
+      from.chat = '→ ' + to.name
+      to.chat = '✉ ' + from.name
+      from.chatAt = now
+      to.chatAt = now
+      $.ui.invalidate('ui.render')
+    }
+    return next(e)
+  })
+
+  // What happens on GitHub reaches the session as an external event; only its kind
+  // and outcome are read.
+  on('session.receive', async ($, e, next) => {
+    const ev = e.event
+    if (EVENTS && ev && ev.source === 'github') {
+      const data = ev.data
+      const pr = typeof data['pr'] === 'string' ? ` ${clip(data['pr'] as string, 22)}` : ''
+      const outcome = String(data['outcome'] ?? data['conclusion'] ?? data['state'] ?? data['status'] ?? '').toLowerCase()
+      let party: Party | null = null
+      const now = Date.now()
+      if (ev.kind.startsWith('pull_request')) {
+        if (outcome === 'merged' || data['merged'] === true) party = { at: now, text: 'PR merged' + pr, kind: 'merged' }
+        else if (ev.kind.endsWith('closed')) party = { at: now, text: 'PR closed' + pr, kind: 'info' }
+      } else if (ev.kind.startsWith('check')) {
+        if (/fail|error|timed_out|cancel/.test(outcome)) party = { at: now, text: 'CI failed', kind: 'bad' }
+        else if (/success|pass/.test(outcome)) party = { at: now, text: 'CI passed', kind: 'ok' }
+      }
+      if (party) {
+        PARTY = party
+        if (party.kind === 'merged') {
+          for (const a of [mainAv, ...agents.values()]) {
+            a.mood = 'happy'
+            a.moodAt = now
+          }
+        }
+        $.ui.toast(party.text)
+        $.ui.invalidate('ui.render')
+      }
     }
     return next(e)
   })

@@ -85,6 +85,16 @@
         "off",
         "on"
       ]
+    },
+    "events": {
+      "type": "string",
+      "title": "GitHub events",
+      "description": "Show a banner (and confetti for a merge) when the session receives a pull request or CI event from GitHub. Only the kind and outcome are read.",
+      "default": "on",
+      "options": [
+        "on",
+        "off"
+      ]
     }
   }
 }
