@@ -58,7 +58,7 @@
       "type": "string",
       "title": "Agent names",
       "description": "static: the task text as is. short: trimmed to the point, free. ai: a small model coins a name (one small request per agent, uses your quota).",
-      "default": "short",
+      "default": "static",
       "options": [
         "static",
         "short",
@@ -69,7 +69,7 @@
       "type": "string",
       "title": "Speech bubbles",
       "description": "static: reading/searching/running. action: what the agent just did (read file.rs, $ cargo test), free. ai: a small model sums up the last actions (a small request every ~12 s per working agent, uses your quota).",
-      "default": "action",
+      "default": "static",
       "options": [
         "static",
         "action",

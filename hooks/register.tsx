@@ -118,8 +118,8 @@ const activity = (tool: string) => {
 // How agents are labelled. names: static (the task text), short (trimmed, free) or ai
 // (a small model coins a name). thoughts: static (reading...), action (what it just
 // did, free) or ai (a small model summarises the last few actions).
-let NAMES = 'short'
-let THOUGHTS = 'action'
+let NAMES = 'static'
+let THOUGHTS = 'static'
 
 const LEAD = /^(please\s+)?(fix|implement|rework|refactor|add|update|investigate|review|check|find|write|create|build|run|make|handle|address|resolve)\s+/i
 const STOP = new Set(['the', 'a', 'an', 'and', 'for', 'of', 'in', 'to', 'on', 'with', 'onto', 'into', 'last', 'latest', 'new', 'another', 'remaining'])
@@ -830,8 +830,8 @@ const sprite = (isWorking: boolean, frame: number) => ({
 
 export const register: Register = (on, options) => {
   const choice = String(options['skin'] ?? 'robot')
-  NAMES = ['static', 'short', 'ai'].includes(String(options['names'])) ? String(options['names']) : 'short'
-  THOUGHTS = ['static', 'action', 'ai'].includes(String(options['thoughts'])) ? String(options['thoughts']) : 'action'
+  NAMES = ['static', 'short', 'ai'].includes(String(options['names'])) ? String(options['names']) : 'static'
+  THOUGHTS = ['static', 'action', 'ai'].includes(String(options['thoughts'])) ? String(options['thoughts']) : 'static'
   const scene = String(options['scene'] ?? 'auto')
   THEME = THEMES[scene] ? scene : (AUTO_SCENE[choice] ?? 'meadow')
   SKY = options['sky'] === 'filled'
