@@ -1,0 +1,9 @@
+{
+  "name": "agent-avatars",
+  "version": "0.1.0",
+  "description": "Pixel-art robots for the main agent and every subagent: they wander a little scene above the prompt while working, show what they are doing, and sleep when done.",
+  "author": { "name": "vanyastaff" },
+  "homepage": "https://github.com/vanyastaff/agent-avatars",
+  "repository": "https://github.com/vanyastaff/agent-avatars",
+  "license": "MIT"
+}

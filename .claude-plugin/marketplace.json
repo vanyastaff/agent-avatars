@@ -1,0 +1,6 @@
+{
+  "name": "agent-avatars",
+  "description": "Pixel-art robots for Claude Code agents.",
+  "owner": { "name": "vanyastaff" },
+  "plugins": [{ "name": "agent-avatars", "source": "./" }]
+}
