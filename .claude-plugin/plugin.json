@@ -1,6 +1,6 @@
 {
   "name": "agent-avatars",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "Pixel-art characters (robots, cats, dragons, anime) for the main agent and every subagent: they wander a little scene above the prompt while working, show what they are doing, and sleep when done.",
   "author": {
     "name": "vanyastaff"
@@ -94,6 +94,17 @@
       "options": [
         "on",
         "off"
+      ]
+    },
+    "look": {
+      "type": "string",
+      "title": "Light or dark",
+      "description": "auto follows your Claude Code theme (and the system, if the theme says auto); dark and light force the colours of clouds, stars and snow.",
+      "default": "auto",
+      "options": [
+        "auto",
+        "dark",
+        "light"
       ]
     }
   }

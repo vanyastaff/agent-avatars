@@ -38,6 +38,7 @@ Open `/config` and find the mod's rows. After a change the mod reloads by itself
 | `skin` (Character) | `robot`, `cat`, `dragon`, `anime`, `mixed` (every agent is a different one) | `robot` |
 | `scene` (Scene) | `auto` (follows the character), `meadow`, `home`, `lava`, `sakura`, `snow`, `night`, `desert`, `space`, `office`, `beach`, `city`, `ocean`, `halloween` | `auto` |
 | `sky` (Background) | `transparent`, `filled` (paints a sky behind the scenery) | `transparent` |
+| `look` (Light or dark) | `auto` (follows your Claude Code `theme`, and the system when that says auto), `dark`, `light` | `auto` |
 
 Scenes at a glance: `office` has desks with flickering monitors and your agents walk from desk to desk; `beach` has palms, umbrellas and gulls; `city` is a neon skyline at night; `ocean` has seaweed, coral, treasure chests and rising bubbles; `halloween` has pumpkins, tombstones and bats under a big moon.
 
@@ -53,6 +54,8 @@ All 13 scenes (the animated parts are in the GIFs above):
 | `thoughts` (Speech bubbles) | `static` (`reading…`, `running…`), `action` (what the agent just did: `read switch.rs`, `$ cargo test`; free), `ai` (a small model sums up the last actions) | `static` |
 
 `short` turns "Implement T9 Switch and NavigationBar" into "T9 Switch…". `ai` calls a small model (Haiku, a few tokens per reply): one request per new agent for the name, and at most one every 12 seconds per working agent for the bubble. Those requests use your Claude usage, which is why `ai` is opt-in. Everything is `static` by default, and nothing calls a model unless you switch it on. The reply is only ever drawn as plain text.
+
+On a light theme the pale things that would vanish (clouds, stars, snow, gulls) switch to a darker blue-grey, so the transparent scenes stay readable on both.
 
 Each agent keeps its own colour (for the anime characters that is the hair colour), so you can tell them apart in any skin.
 

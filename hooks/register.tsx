@@ -36,7 +36,7 @@ type Avatar = {
   total: number
 }
 
-const VERSION = '0.4.0'
+const VERSION = '0.5.0'
 const COLORS = ['#ff8a1f', '#37c871', '#b45cff', '#2fa8ff', '#ffd23f', '#ff5c7a', '#e6e6e6']
 const LINGER_MS = 15000
 const MOOD_MS = 5000
@@ -155,6 +155,14 @@ const play = async ($: any, name: 'spawn' | 'done' | 'error' | 'ask') => {
     // no player on this system, or the clip would not play: stay quiet
   }
 }
+
+// The look follows the light or dark theme. `auto` asks the Claude Code `theme` setting
+// and, if that does not say, the SVG's own prefers-color-scheme; `dark` and `light` force it.
+let LOOK_OPTION = 'auto'
+let LOOK = 'auto' // dark | light | auto (decided by the browser's prefers-color-scheme)
+const LOOK_CSS = 'svg.light .w{fill:#6f7f95}svg.light .cl{fill:#7d8fa6}@media (prefers-color-scheme: light){svg.auto .w{fill:#6f7f95}svg.auto .cl{fill:#7d8fa6}}'
+
+const lookFromTheme = (theme: string) => (theme.startsWith('light') ? 'light' : theme.startsWith('dark') ? 'dark' : 'auto')
 
 let NAMES = 'static'
 let THOUGHTS = 'static'
@@ -467,8 +475,8 @@ type Theme = {
   noClouds?: boolean
 }
 
-const rect = (x: number, y: number, w: number, h: number, fill: string) =>
-  `<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="${fill}"/>`
+const rect = (x: number, y: number, w: number, h: number, fill: string, cls = '') =>
+  `<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="${fill}"${cls ? ` class="${cls}"` : ''}/>`
 
 const tuft = (x: number, c1: string, c2: string) =>
   rect(x, GY - U, U, 2 * U, c1) + rect(x + U, GY - 2 * U, U, 3 * U, c2) + rect(x + 2 * U, GY - U, U, 2 * U, c1)
@@ -497,7 +505,7 @@ const stars = (now: number, n: number, seed: number, maxY: number) => {
     const y = Math.round(2 + r() * maxY)
     const dur = 2 + r() * 3
     const ph = ((now / 1000 + r() * 10) % dur).toFixed(1)
-    s += `<rect x="${x}" y="${y}" width="2" height="2" fill="#ffffff" opacity="0.8"><animate attributeName="opacity" values="0.9;0.25;0.9" dur="${dur.toFixed(1)}s" begin="-${ph}s" repeatCount="indefinite"/></rect>`
+    s += `<rect class="w" x="${x}" y="${y}" width="2" height="2" fill="#ffffff" opacity="0.8"><animate attributeName="opacity" values="0.9;0.25;0.9" dur="${dur.toFixed(1)}s" begin="-${ph}s" repeatCount="indefinite"/></rect>`
   }
   return s
 }
@@ -602,7 +610,7 @@ const THEMES: Record<string, Theme> = {
         // pine tree
         return rect(x + 2 * U, GY - U, U, U, '#6b4a2a') + rect(x, GY - 2 * U, 5 * U, U, '#2f6b4a') + rect(x + U, GY - 3 * U, 3 * U, U, '#3a7d58') + rect(x + 2 * U, GY - 4 * U, U, U, '#ffffff') + rect(x + U, GY - 3 * U, U, U, '#ffffff')
       }
-      if (k < 0.75) return rect(x, GY - U, 4 * U, U, '#ffffff') + rect(x + U, GY - 2 * U, 2 * U, U, '#ffffff')
+      if (k < 0.75) return rect(x, GY - U, 4 * U, U, '#ffffff', 'w') + rect(x + U, GY - 2 * U, 2 * U, U, '#ffffff', 'w')
       return rock(x, '#8d99a8', '#aab6c4')
     },
     extra: now => {
@@ -612,7 +620,7 @@ const THEMES: Record<string, Theme> = {
         const x = Math.round(r() * W)
         const dur = 6 + r() * 6
         const ph = ((now / 1000 + r() * 20) % dur).toFixed(1)
-        s += `<rect x="${x}" y="-4" width="2" height="2" fill="#ffffff" opacity="0.9"><animateTransform attributeName="transform" type="translate" values="0 0;${Math.round(r() * 30 - 15)} ${H + 6}" dur="${dur.toFixed(1)}s" begin="-${ph}s" repeatCount="indefinite"/></rect>`
+        s += `<rect class="w" x="${x}" y="-4" width="2" height="2" fill="#ffffff" opacity="0.9"><animateTransform attributeName="transform" type="translate" values="0 0;${Math.round(r() * 30 - 15)} ${H + 6}" dur="${dur.toFixed(1)}s" begin="-${ph}s" repeatCount="indefinite"/></rect>`
       }
       return `<g shape-rendering="crispEdges">${s}</g>`
     },
@@ -739,7 +747,7 @@ const THEMES: Record<string, Theme> = {
         const dur = 30 + i * 12
         const ph = ((now / 1000 + i * 11) % dur).toFixed(1)
         const y = 14 + i * 12
-        s += `<g fill="#ffffff"><animateTransform attributeName="transform" type="translate" values="-20 ${y};${W + 20} ${y}" dur="${dur}s" begin="-${ph}s" repeatCount="indefinite"/>${rect(0, 0, U, U, '#fff')}${rect(U, -U, U, U, '#fff')}${rect(2 * U, 0, U, U, '#fff')}${rect(3 * U, -U, U, U, '#fff')}${rect(4 * U, 0, U, U, '#fff')}</g>`
+        s += `<g class="w" fill="#ffffff"><animateTransform attributeName="transform" type="translate" values="-20 ${y};${W + 20} ${y}" dur="${dur}s" begin="-${ph}s" repeatCount="indefinite"/>${rect(0, 0, U, U, '#fff')}${rect(U, -U, U, U, '#fff')}${rect(2 * U, 0, U, U, '#fff')}${rect(3 * U, -U, U, U, '#fff')}${rect(4 * U, 0, U, U, '#fff')}</g>`
       }
       return `<g shape-rendering="crispEdges">${s}</g>`
     },
@@ -860,7 +868,7 @@ const scenery = (now: number) => {
     const dur = 80 + i * 30
     const y = 2 + i * 9
     const phase = ((now / 1000 + i * 37) % dur).toFixed(1)
-    s += `<g shape-rendering="crispEdges" fill="${t.cloud}" opacity="0.45"><g><animateTransform attributeName="transform" type="translate" values="-60 ${y};${W + 20} ${y}" dur="${dur}s" begin="-${phase}s" repeatCount="indefinite"/><rect x="6" y="6" width="36" height="6"/><rect x="0" y="12" width="48" height="6"/><rect x="12" y="0" width="18" height="6"/></g></g>`
+    s += `<g class="cl" shape-rendering="crispEdges" fill="${t.cloud}" opacity="0.45"><g><animateTransform attributeName="transform" type="translate" values="-60 ${y};${W + 20} ${y}" dur="${dur}s" begin="-${phase}s" repeatCount="indefinite"/><rect x="6" y="6" width="36" height="6"/><rect x="0" y="12" width="48" height="6"/><rect x="12" y="0" width="18" height="6"/></g></g>`
   }
   return s + (t.extra ? t.extra(now) : '')
 }
@@ -944,7 +952,7 @@ const celebration = (now: number) => {
   return `<g shape-rendering="crispEdges">${out}</g>`
 }
 
-const sceneSvg = (all: Avatar[], now: number) => `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}">
+const sceneSvg = (all: Avatar[], now: number) => `<svg xmlns="http://www.w3.org/2000/svg" class="${LOOK}" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}"><style>${LOOK_CSS}</style>
 ${sky()}
 ${scenery(now)}
 ${all.map(a => agentSvg(a, now)).join('')}
@@ -973,6 +981,8 @@ export const register: Register = (on, options) => {
   NAMES = ['static', 'short', 'ai'].includes(String(options['names'])) ? String(options['names']) : 'static'
   THOUGHTS = ['static', 'action', 'ai'].includes(String(options['thoughts'])) ? String(options['thoughts']) : 'static'
   SOUND = options['sound'] === 'on'
+  LOOK_OPTION = ['auto', 'dark', 'light'].includes(String(options['look'])) ? String(options['look']) : 'auto'
+  LOOK = LOOK_OPTION === 'auto' ? 'auto' : LOOK_OPTION
   EVENTS = options['events'] !== 'off'
   const scene = String(options['scene'] ?? 'auto')
   THEME = THEMES[scene] ? scene : (AUTO_SCENE[choice] ?? 'meadow')
@@ -1081,11 +1091,25 @@ export const register: Register = (on, options) => {
       // a command is a convenience; the scene works without it
     }
     void $.agent.list().then(applyList).then(c => c && $.ui.invalidate('ui.render'), () => undefined)
+    const readTheme = () =>
+      $.config.list().then(
+        rows => {
+          if (LOOK_OPTION !== 'auto') return
+          const look = lookFromTheme(String(rows.find(r => r.key === 'theme')?.value ?? ''))
+          if (look !== LOOK) {
+            LOOK = look
+            $.ui.invalidate('ui.render')
+          }
+        },
+        () => undefined,
+      )
+    void readTheme()
     let ticks = 0
     $.clock.every(FRAME_MS, () => {
       const now = Date.now()
       let changed = false
       ticks += 1
+      if (ticks % 8 === 0) void readTheme()
       if (ticks % 8 === 0) void $.agent.list().then(applyList).then(c => c && $.ui.invalidate('ui.render'), () => undefined)
       if (mainAv.mood && now - mainAv.moodAt > MOOD_MS) {
         mainAv.mood = ''
