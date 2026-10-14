@@ -7,6 +7,14 @@ A [Claude Code mod](https://code.claude.com/docs/en/plugins/mods/overview) that 
 - **Enter and exit:** a new subagent pops in with a bounce; a finished one flickers, floats up and vanishes in a puff of pixels after 15 seconds.
 - **Scenery:** a themed little world on a transparent background (or with a sky, if you like), with drifting pixel clouds.
 
+![Robots working at an office](docs/office.gif)
+
+| Anime, sakura scene | Cats at home |
+| --- | --- |
+| ![Anime characters](docs/sakura-anime.gif) | ![Cats](docs/home-cats.gif) |
+| **Dragons in lava land** | **A mixed party in the neon city** |
+| ![Dragons](docs/lava-dragons.gif) | ![City](docs/city.gif) |
+
 The scene is a single SVG animated with SMIL, so it costs almost nothing: no JavaScript runs per frame and nothing is redrawn while the agents stay in the same state.
 
 ## Install
@@ -30,6 +38,10 @@ Open `/config` and find the mod's rows. After a change the mod reloads by itself
 | `sky` (Background) | `transparent`, `filled` (paints a sky behind the scenery) | `transparent` |
 
 Scenes at a glance: `office` has desks with flickering monitors and your agents walk from desk to desk; `beach` has palms, umbrellas and gulls; `city` is a neon skyline at night; `ocean` has seaweed, coral, treasure chests and rising bubbles; `halloween` has pumpkins, tombstones and bats under a big moon.
+
+All 13 scenes (the animated parts are in the GIFs above):
+
+![All scenes](docs/scenes.png)
 
 Each agent keeps its own colour (for the anime characters that is the hair colour), so you can tell them apart in any skin.
 

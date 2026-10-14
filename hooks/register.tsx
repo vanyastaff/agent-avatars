@@ -768,7 +768,6 @@ export const register: Register = (on, options) => {
   const make = (id: string, name: string, color: string): Avatar => {
     spawned += 1
     const skin = choice === 'mixed' ? (SKIN_IDS[(spawned - 1) % SKIN_IDS.length] as string) : SKINS[choice] ? choice : 'robot'
-    const r = rng(spawned * 31)
     return {
       id,
       name,
@@ -779,7 +778,7 @@ export const register: Register = (on, options) => {
       doneAt: 0,
       spawnAt: 0,
       leaveAt: 0,
-      restX: 50 + r() * (W - 100),
+      restX: 50 + ((spawned * 0.618034) % 1) * (W - 100),
       seed: spawned,
       epoch: 0,
       pathStart: 0,
