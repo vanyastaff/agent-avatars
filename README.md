@@ -45,6 +45,10 @@ All 13 scenes (the animated parts are in the GIFs above):
 
 Each agent keeps its own colour (for the anime characters that is the hair colour), so you can tell them apart in any skin.
 
+## Troubleshooting
+
+Run `/avatars` to see which agents the scene is drawing next to the agents the session itself reports. If an agent is in the second list but not the first, please open an issue with that output.
+
 ## Where it draws
 
 | Surface | What you get |

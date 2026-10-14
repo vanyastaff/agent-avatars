@@ -23,6 +23,7 @@ type Avatar = {
   total: number
 }
 
+const VERSION = '0.2.2'
 const COLORS = ['#ff8a1f', '#37c871', '#b45cff', '#2fa8ff', '#ffd23f', '#ff5c7a', '#e6e6e6']
 const LINGER_MS = 15000
 const EXIT_MS = 1400
@@ -825,6 +826,11 @@ export const register: Register = (on, options) => {
   }
 
   on('session.start', async ($, e, next) => {
+    try {
+      await $.command.register({ name: 'avatars', description: 'Show which agents the avatar scene knows about' })
+    } catch {
+      // a command is a convenience; the scene works without it
+    }
     void $.agent.list().then(applyList).then(c => c && $.ui.invalidate('ui.render'), () => undefined)
     let ticks = 0
     $.clock.every(FRAME_MS, () => {
@@ -858,6 +864,18 @@ export const register: Register = (on, options) => {
       $.ui.invalidate('ui.render')
     }
     return res
+  })
+
+  on('command.run', { command: 'avatars' }, async $ => {
+    let engine = 'unavailable'
+    try {
+      const list = await $.agent.list()
+      engine = list.length ? list.map(i => `  ${i.id.slice(0, 8)}  ${i.status.padEnd(9)} ${i.type}: ${i.description}`).join('\n') : '  (none)'
+    } catch (err) {
+      engine = `  error: ${String(err)}`
+    }
+    const mine = [mainAv, ...agents.values()].map(a => `  ${a.id.slice(0, 8)}  ${a.isWorking ? 'working  ' : 'idle     '} ${a.skin}: ${a.name}${a.leaveAt ? ' (leaving)' : ''}`).join('\n')
+    return { text: `agent-avatars ${VERSION}, character ${choice}, scene ${THEME}\n\nOn the scene:\n${mine}\n\nThe session's agents:\n${engine}` }
   })
 
   on('tool.call', async ($, e, next) => {
