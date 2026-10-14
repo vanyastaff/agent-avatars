@@ -1,9 +1,53 @@
 {
   "name": "agent-avatars",
-  "version": "0.1.0",
-  "description": "Pixel-art robots for the main agent and every subagent: they wander a little scene above the prompt while working, show what they are doing, and sleep when done.",
-  "author": { "name": "vanyastaff" },
+  "version": "0.3.0",
+  "description": "Pixel-art characters (robots, cats, dragons, anime) for the main agent and every subagent: they wander a little scene above the prompt while working, show what they are doing, and sleep when done.",
+  "author": {
+    "name": "vanyastaff"
+  },
   "homepage": "https://github.com/vanyastaff/agent-avatars",
   "repository": "https://github.com/vanyastaff/agent-avatars",
-  "license": "MIT"
+  "license": "MIT",
+  "userConfig": {
+    "skin": {
+      "type": "string",
+      "title": "Character",
+      "description": "Which character the agents are. Mixed gives every agent a different one.",
+      "default": "robot",
+      "options": [
+        "robot",
+        "cat",
+        "dragon",
+        "anime",
+        "mixed"
+      ]
+    },
+    "scene": {
+      "type": "string",
+      "title": "Scene",
+      "description": "The world the characters live in. Auto follows the character.",
+      "default": "auto",
+      "options": [
+        "auto",
+        "meadow",
+        "home",
+        "lava",
+        "sakura",
+        "snow",
+        "night",
+        "desert",
+        "space"
+      ]
+    },
+    "sky": {
+      "type": "string",
+      "title": "Background",
+      "description": "Transparent shows only the scenery; filled paints a sky behind it.",
+      "default": "transparent",
+      "options": [
+        "transparent",
+        "filled"
+      ]
+    }
+  }
 }

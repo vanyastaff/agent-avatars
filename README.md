@@ -1,11 +1,11 @@
 # agent-avatars
 
-A [Claude Code mod](https://code.claude.com/docs/en/plugins/mods/overview) that puts a tiny pixel-art world above the prompt. The main agent and every subagent are little robots:
+A [Claude Code mod](https://code.claude.com/docs/en/plugins/mods/overview) that puts a tiny pixel-art world above the prompt. The main agent and every subagent are little pixel characters (robots, cats, dragons, anime kids):
 
 - **Working:** the robot walks around the scene, hops, and shows what it is doing in a speech bubble (`reading…`, `searching…`, `running…`, `writing…`, `browsing…`, `delegating…`).
 - **Idle or done:** it stands still, blinks and sleeps (`z z`).
 - **Enter and exit:** a new subagent pops in with a bounce; a finished one flickers, floats up and vanishes in a puff of pixels after 15 seconds.
-- **Scenery:** grass, flowers, rocks, mushrooms and drifting pixel clouds on a transparent background.
+- **Scenery:** a themed little world on a transparent background (or with a sky, if you like), with drifting pixel clouds.
 
 The scene is a single SVG animated with SMIL, so it costs almost nothing: no JavaScript runs per frame and nothing is redrawn while the agents stay in the same state.
 
@@ -18,6 +18,18 @@ In a terminal Claude Code session:
 ```
 
 Answer `y` to add the marketplace, then pick a scope. The mod is active right away.
+
+## Choose your characters and world
+
+Open `/config` and find the mod's rows. After a change the mod reloads by itself.
+
+| Option | Values | Default |
+| --- | --- | --- |
+| `skin` (Character) | `robot`, `cat`, `dragon`, `anime`, `mixed` (every agent is a different one) | `robot` |
+| `scene` (Scene) | `auto` (follows the character), `meadow`, `home`, `lava`, `sakura`, `snow`, `night`, `desert`, `space` | `auto` |
+| `sky` (Background) | `transparent`, `filled` (paints a sky behind the scenery) | `transparent` |
+
+Each agent keeps its own colour (for the anime characters that is the hair colour), so you can tell them apart in any skin.
 
 ## Where it draws
 

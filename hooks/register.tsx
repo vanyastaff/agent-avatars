@@ -6,6 +6,7 @@ type Avatar = {
   id: string
   name: string
   color: string
+  skin: string
   isWorking: boolean
   tool: string
   doneAt: number
@@ -136,35 +137,117 @@ const pixels = (rows: string[], colors: Record<string, string>, oy = 0) => {
 const steps = (values: string, dur: string, extra = '') =>
   `<animateTransform attributeName="transform" type="translate" values="${values}" dur="${dur}" calcMode="discrete" repeatCount="indefinite" ${extra}/>`
 
-// 14 x 7 pixel body (ears on rows 3-4) over 3 rows of legs; feet land on row 10.
-const BODY = [
-  '..LLLLLLLLLL..',
-  '..XXXXXXXXXX..',
-  '..XXXXXXXXXX..',
-  'XXXXXXXXXXXXXX',
-  'XXXXXXXXXXXXXX',
-  '..XXXXXXXXXX..',
-  '..DDDDDDDDDD..',
-]
-const EYES_IDLE = ['....E....E....', '....E....E....', '....E....E....']
-const EYES_WORK = ['...E......E...', '....E....E....', '...E......E...']
+type Skin = {
+  title: string
+  body: string[] // 7 rows
+  eyesIdle: string[]
+  eyesWork: string[]
+  eyeOy: number
+  legsStill: string[]
+  legsA: string[]
+  legsB: string[]
+  palette: (color: string) => Record<string, string>
+}
+
+// Four-legged shapes shared by the robot, the cat and the dragon.
 const LEGS_STILL = ['..DD.DD.DD.DD.', '..DD.DD.DD.DD.', '..DD.DD.DD.DD.']
 const LEGS_A = ['..DD......DD..', '..DD......DD..', '..DD......DD..']
 const LEGS_B = ['....DD..DD....', '....DD..DD....', '....DD..DD....']
 
-const robotBody = (color: string, isWorking: boolean) => {
-  const c = { X: color, L: shade(color, 1.25), D: shade(color, 0.72), E: EYE }
+// Every sprite is 14 columns wide: 7 body rows over 3 rows of legs, feet on row 10.
+const SKINS: Record<string, Skin> = {
+  robot: {
+    title: 'Robot',
+    body: [
+      '..LLLLLLLLLL..',
+      '..XXXXXXXXXX..',
+      '..XXXXXXXXXX..',
+      'XXXXXXXXXXXXXX',
+      'XXXXXXXXXXXXXX',
+      '..XXXXXXXXXX..',
+      '..DDDDDDDDDD..',
+    ],
+    eyesIdle: ['....E....E....', '....E....E....', '....E....E....'],
+    eyesWork: ['...E......E...', '....E....E....', '...E......E...'],
+    eyeOy: 1,
+    legsStill: LEGS_STILL,
+    legsA: LEGS_A,
+    legsB: LEGS_B,
+    palette: c => ({ X: c, L: shade(c, 1.25), D: shade(c, 0.72), E: EYE }),
+  },
+  cat: {
+    title: 'Cat',
+    body: [
+      '..XL......LX..',
+      '..XXX....XXX..',
+      '..XXXXXXXXXX..',
+      '..XXXXXXXXXX.X',
+      '..XXXXPPXXXX.X',
+      '..DDDDDDDDDDXX',
+      '..DDDDDDDDDD..',
+    ],
+    eyesIdle: ['....E....E....', '....E....E....'],
+    eyesWork: ['...E......E...', '....E....E....', '...E......E...'],
+    eyeOy: 2,
+    legsStill: LEGS_STILL,
+    legsA: LEGS_A,
+    legsB: LEGS_B,
+    palette: c => ({ X: c, L: shade(c, 1.3), D: shade(c, 0.78), P: '#ff9ab0', E: EYE }),
+  },
+  dragon: {
+    title: 'Dragon',
+    body: [
+      '.LX........XL.',
+      '..XXXXXXXXXX..',
+      '..XXXXXXXXXX..',
+      '..XXXLLLLXXX..',
+      'DDXXXLDDLXXXDD',
+      'DDXXXXXXXXXXDD',
+      '..DDDDDDDDDD..',
+    ],
+    eyesIdle: ['....E....E....', '....E....E....'],
+    eyesWork: ['...E......E...', '....E....E....'],
+    eyeOy: 1,
+    legsStill: LEGS_STILL,
+    legsA: LEGS_A,
+    legsB: LEGS_B,
+    palette: c => ({ X: c, L: shade(c, 1.4), D: shade(c, 0.58), E: EYE }),
+  },
+  anime: {
+    title: 'Anime',
+    body: [
+      '..XXXXXXXXXX..',
+      '.XXXXXXXXXXXX.',
+      '.XXSSSSSSSSXX.',
+      '.XXSSSSSSSSXX.',
+      '.XXSSSSSSSSXX.',
+      '.XXSPSSSSPSXX.',
+      '..XUWWRRWWUX..',
+    ],
+    eyesIdle: ['....WE..WE....', '....EE..EE....'],
+    eyesWork: ['....EE..EE....', '...E..E.E..E..'],
+    eyeOy: 3,
+    legsStill: ['...UU....UU...', '...SS....SS...', '...SS....SS...'],
+    legsA: ['...UU.........', '...SS.........', '...SS.........'],
+    legsB: ['.........UU...', '.........SS...', '.........SS...'],
+    palette: c => ({ X: c, S: '#ffd9b8', P: '#ff9aa8', U: '#4a63c9', W: '#ffffff', R: '#e03a4e', E: EYE, D: shade(c, 0.7), L: shade(c, 1.2) }),
+  },
+}
+const SKIN_IDS = Object.keys(SKINS)
+
+const robotBody = (skin: Skin, color: string, isWorking: boolean) => {
+  const c = skin.palette(color)
   const eyes = isWorking
-    ? pixels(EYES_WORK, c, 1)
-    : `<g><animateTransform attributeName="transform" type="scale" values="1 1;1 1;1 0.15;1 1" keyTimes="0;0.9;0.94;1" dur="4s" repeatCount="indefinite"/>${pixels(EYES_IDLE, c, 1)}</g>`
+    ? pixels(skin.eyesWork, c, skin.eyeOy)
+    : `<g><animateTransform attributeName="transform" type="scale" values="1 1;1 1;1 0.15;1 1" keyTimes="0;0.9;0.94;1" dur="4s" repeatCount="indefinite"/>${pixels(skin.eyesIdle, c, skin.eyeOy)}</g>`
   const legs = isWorking
-    ? `<g>${steps('0 0;0 -3', '0.4s')}${pixels(LEGS_A, c)}</g><g>${steps('0 -3;0 0', '0.4s')}${pixels(LEGS_B, c)}</g>`
-    : pixels(LEGS_STILL, c)
+    ? `<g>${steps('0 0;0 -3', '0.4s')}${pixels(skin.legsA, c)}</g><g>${steps('0 -3;0 0', '0.4s')}${pixels(skin.legsB, c)}</g>`
+    : pixels(skin.legsStill, c)
   const hop = isWorking ? steps('0 0;0 -3', '0.4s') : steps('0 0;0 -3;0 0', '2.4s', 'keyTimes="0;0.5;0.56"')
   const spark = isWorking
     ? `<g transform="translate(${5 * U} ${-3 * U})" fill="#ffd23f"><rect x="${U}" y="0" width="${U}" height="${3 * U}"/><rect x="0" y="${U}" width="${3 * U}" height="${U}"/><animate attributeName="opacity" values="1;0" dur="0.6s" calcMode="discrete" repeatCount="indefinite"/></g>`
     : ''
-  return `<g shape-rendering="crispEdges"><g>${hop}<g transform="translate(0 ${7 * U})">${legs}</g>${pixels(BODY, c)}${eyes}${spark}</g></g>`
+  return `<g shape-rendering="crispEdges"><g>${hop}<g transform="translate(0 ${7 * U})">${legs}</g>${pixels(skin.body, c)}${eyes}${spark}</g></g>`
 }
 
 const tagSvg = (a: Avatar) => {
@@ -211,7 +294,7 @@ const withEffects = (a: Avatar, body: string, now: number) => {
 
 const agentSvg = (a: Avatar, now: number) => {
   const inner = `<rect x="${-7 * U}" y="${GY}" width="${14 * U}" height="${U}" fill="#888" opacity="0.4" shape-rendering="crispEdges"/>
-<g transform="translate(${-7 * U} ${GY - 10 * U})">${robotBody(a.color, a.isWorking)}</g>
+<g transform="translate(${-7 * U} ${GY - 10 * U})">${robotBody(SKINS[a.skin] ?? SKINS['robot']!, a.color, a.isWorking)}</g>
 ${tagSvg(a)}`
   if (!a.isWorking) return `<g transform="translate(${Math.round(a.restX)} 0)">${withEffects(a, inner, now)}</g>`
 
@@ -230,24 +313,230 @@ ${tagSvg(a)}`
   return `<g>${walk}${withEffects(a, inner, now)}</g>`
 }
 
+// Scenery follows the chosen skin (a mixed party gets the plain meadow).
+type Theme = {
+  sky: [string, string]
+  ground: [string, string]
+  cloud: string
+  decor: (r: () => number, x: number) => string
+  extra?: (now: number) => string
+}
+
+const rect = (x: number, y: number, w: number, h: number, fill: string) =>
+  `<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="${fill}"/>`
+
+const tuft = (x: number, c1: string, c2: string) =>
+  rect(x, GY - U, U, 2 * U, c1) + rect(x + U, GY - 2 * U, U, 3 * U, c2) + rect(x + 2 * U, GY - U, U, 2 * U, c1)
+
+const rock = (x: number, c1: string, c2: string) => rect(x, GY - U, 4 * U, 2 * U, c1) + rect(x + U, GY - 2 * U, 2 * U, U, c2)
+
+const flower = (x: number, petal: string) =>
+  rect(x + U, GY - 2 * U, U, 3 * U, '#4a8a3c') + rect(x, GY - 3 * U, 3 * U, U, petal) + rect(x + U, GY - 4 * U, U, U, petal) + rect(x + U, GY - 3 * U, U, U, '#fff6c8')
+
+const pick = <T,>(r: () => number, list: T[]) => list[Math.floor(r() * list.length)] as T
+
+const disc = (cx: number, cy: number, rad: number, fill: string) => {
+  let o = ''
+  for (let y = -rad; y <= rad; y++) {
+    const hw = Math.floor(Math.sqrt(rad * rad - y * y))
+    o += rect(cx - hw * U, cy + y * U, (2 * hw + 1) * U, U, fill)
+  }
+  return o
+}
+
+const stars = (now: number, n: number, seed: number, maxY: number) => {
+  const r = rng(seed)
+  let s = ''
+  for (let i = 0; i < n; i++) {
+    const x = Math.round(r() * W)
+    const y = Math.round(2 + r() * maxY)
+    const dur = 2 + r() * 3
+    const ph = ((now / 1000 + r() * 10) % dur).toFixed(1)
+    s += `<rect x="${x}" y="${y}" width="2" height="2" fill="#ffffff" opacity="0.8"><animate attributeName="opacity" values="0.9;0.25;0.9" dur="${dur.toFixed(1)}s" begin="-${ph}s" repeatCount="indefinite"/></rect>`
+  }
+  return s
+}
+
+const THEMES: Record<string, Theme> = {
+  meadow: {
+    sky: ['#6fb1e6', '#d8f0fb'],
+    ground: ['#5a7d4a', '#3a4f33'],
+    cloud: '#9fb4c8',
+    decor: (r, x) => {
+      const k = r()
+      if (k < 0.5) return tuft(x, '#5f9d4a', '#4a8a3c')
+      if (k < 0.68) return flower(x, pick(r, ['#ff6fa5', '#ffd23f', '#7fd4ff']))
+      if (k < 0.84) return rock(x, '#7d7f86', '#9a9ca4')
+      return rect(x + U, GY - U, U, 2 * U, '#f1e6d2') + rect(x, GY - 2 * U, 3 * U, U, '#d9463a') + rect(x + U, GY - 2 * U, U, U, '#fff')
+    },
+  },
+  home: {
+    sky: ['#e8c9a0', '#f8ecd8'],
+    ground: ['#a07850', '#6e5236'],
+    cloud: '#c9b8a6',
+    decor: (r, x) => {
+      const k = r()
+      if (k < 0.4) return tuft(x, '#7fb36a', '#5f9d4a')
+      if (k < 0.7) {
+        // ball of yarn with a loose thread
+        const c = pick(r, ['#ff6fa5', '#7fd4ff', '#b45cff', '#ffd23f'])
+        return rect(x, GY - 3 * U, 3 * U, 3 * U, c) + rect(x + U, GY - 3 * U, U, U, '#fff') + rect(x + 3 * U, GY - U, 2 * U, U, c)
+      }
+      if (k < 0.85) {
+        // fish skeleton
+        return rect(x, GY - U, 5 * U, U, '#e8e8e8') + rect(x + U, GY - 2 * U, U, U, '#e8e8e8') + rect(x + 3 * U, GY - 2 * U, U, U, '#e8e8e8') + rect(x - U, GY - 2 * U, U, 2 * U, '#e8e8e8')
+      }
+      return rock(x, '#8a7a68', '#a89886')
+    },
+  },
+  lava: {
+    sky: ['#2a0f12', '#8a2c12'],
+    ground: ['#6b3a2a', '#3a1f1a'],
+    cloud: '#6e5f66',
+    decor: (r, x) => {
+      const k = r()
+      if (k < 0.45) return rock(x, '#4a3a3a', '#6a5656')
+      if (k < 0.8) {
+        // a little flame that flickers
+        return (
+          rect(x, GY - U, 3 * U, U, '#d9461a') +
+          rect(x, GY - 2 * U, 2 * U, U, '#ff8a1f') +
+          `<rect x="${x + U}" y="${GY - 3 * U}" width="${U}" height="${U}" fill="#ffd23f"><animate attributeName="opacity" values="1;0;1;1" dur="0.7s" calcMode="discrete" repeatCount="indefinite"/></rect>`
+        )
+      }
+      return rect(x, GY - 2 * U, 3 * U, 2 * U, '#d8d2c4') + rect(x + U, GY - U, U, U, '#2b2b2b') // a skull
+    },
+    extra: now => {
+      const r = rng(77)
+      let s = ''
+      for (let i = 0; i < 9; i++) {
+        const x = Math.round((r() * W) / U) * U
+        const dur = 5 + r() * 5
+        const ph = ((now / 1000 + r() * 20) % dur).toFixed(1)
+        s += `<rect x="${x}" y="${GY - U}" width="${U}" height="${U}" fill="#ff9a2a" opacity="0"><animate attributeName="opacity" values="0;0.9;0" dur="${dur.toFixed(1)}s" begin="-${ph}s" repeatCount="indefinite"/><animateTransform attributeName="transform" type="translate" values="0 0;${Math.round(r() * 20 - 10)} -${40 + Math.round(r() * 30)}" dur="${dur.toFixed(1)}s" begin="-${ph}s" repeatCount="indefinite"/></rect>`
+      }
+      return `<g shape-rendering="crispEdges">${s}</g>`
+    },
+  },
+  sakura: {
+    sky: ['#f7c6dc', '#fdeaf2'],
+    ground: ['#7fae6a', '#4f7a47'],
+    cloud: '#f2c6d8',
+    decor: (r, x) => {
+      const k = r()
+      if (k < 0.4) return tuft(x, '#8fc27a', '#6fae5c')
+      if (k < 0.75) return flower(x, pick(r, ['#ff9ac1', '#ffffff', '#ffd6e6']))
+      return rock(x, '#a8a8b8', '#c8c8d8')
+    },
+    extra: now => {
+      // sakura petals drifting down
+      const r = rng(9)
+      let s = ''
+      for (let i = 0; i < 14; i++) {
+        const x = Math.round((r() * W) / U) * U
+        const dur = 7 + r() * 6
+        const ph = ((now / 1000 + r() * 20) % dur).toFixed(1)
+        s += `<rect x="${x}" y="-6" width="${U}" height="${U}" fill="#ffb3d0" opacity="0.85"><animateTransform attributeName="transform" type="translate" values="0 0;${Math.round(r() * 40 + 10)} ${H + 6}" dur="${dur.toFixed(1)}s" begin="-${ph}s" repeatCount="indefinite"/></rect>`
+      }
+      return `<g shape-rendering="crispEdges">${s}</g>`
+    },
+  },
+  snow: {
+    sky: ['#b9d3ea', '#eef6fc'],
+    ground: ['#dfe9f2', '#9fb3c6'],
+    cloud: '#ffffff',
+    decor: (r, x) => {
+      const k = r()
+      if (k < 0.4) {
+        // pine tree
+        return rect(x + 2 * U, GY - U, U, U, '#6b4a2a') + rect(x, GY - 2 * U, 5 * U, U, '#2f6b4a') + rect(x + U, GY - 3 * U, 3 * U, U, '#3a7d58') + rect(x + 2 * U, GY - 4 * U, U, U, '#ffffff') + rect(x + U, GY - 3 * U, U, U, '#ffffff')
+      }
+      if (k < 0.75) return rect(x, GY - U, 4 * U, U, '#ffffff') + rect(x + U, GY - 2 * U, 2 * U, U, '#ffffff')
+      return rock(x, '#8d99a8', '#aab6c4')
+    },
+    extra: now => {
+      const r = rng(31)
+      let s = ''
+      for (let i = 0; i < 26; i++) {
+        const x = Math.round(r() * W)
+        const dur = 6 + r() * 6
+        const ph = ((now / 1000 + r() * 20) % dur).toFixed(1)
+        s += `<rect x="${x}" y="-4" width="2" height="2" fill="#ffffff" opacity="0.9"><animateTransform attributeName="transform" type="translate" values="0 0;${Math.round(r() * 30 - 15)} ${H + 6}" dur="${dur.toFixed(1)}s" begin="-${ph}s" repeatCount="indefinite"/></rect>`
+      }
+      return `<g shape-rendering="crispEdges">${s}</g>`
+    },
+  },
+  night: {
+    sky: ['#0b1026', '#2a2f5c'],
+    ground: ['#2a3a52', '#1a2438'],
+    cloud: '#5b6b8c',
+    decor: (r, x) => {
+      const k = r()
+      if (k < 0.5) return tuft(x, '#2f5a3a', '#244a30')
+      if (k < 0.8) {
+        // a glowing mushroom
+        return rect(x + U, GY - U, U, 2 * U, '#cfe8f0') + `<rect x="${x}" y="${GY - 2 * U}" width="${3 * U}" height="${U}" fill="#5fe0ff"><animate attributeName="opacity" values="1;0.5;1" dur="2s" repeatCount="indefinite"/></rect>`
+      }
+      return rock(x, '#3a4a64', '#52638a')
+    },
+    extra: now => {
+      let s = stars(now, 34, 5, GY - 40) + disc(W - 70, 22, 5, '#f3efc8') + rect(W - 73, 18, U, U, '#d8d3a4') + rect(W - 64, 25, U, U, '#d8d3a4')
+      const r = rng(88)
+      for (let i = 0; i < 8; i++) {
+        const x = Math.round(30 + r() * (W - 60))
+        const y = GY - 8 - Math.round(r() * 30)
+        const dur = 3 + r() * 3
+        s += `<rect x="${x}" y="${y}" width="2" height="2" fill="#e8ff7a" opacity="0"><animate attributeName="opacity" values="0;1;0" dur="${dur.toFixed(1)}s" begin="-${((now / 1000 + i * 3) % dur).toFixed(1)}s" repeatCount="indefinite"/><animateTransform attributeName="transform" type="translate" values="0 0;${Math.round(r() * 16 - 8)} ${Math.round(r() * 10 - 5)}" dur="${dur.toFixed(1)}s" begin="-${((now / 1000 + i * 3) % dur).toFixed(1)}s" repeatCount="indefinite"/></rect>`
+      }
+      return `<g shape-rendering="crispEdges">${s}</g>`
+    },
+  },
+  desert: {
+    sky: ['#f5c27a', '#fbe8b8'],
+    ground: ['#d9b46a', '#a8823c'],
+    cloud: '#fff1d0',
+    decor: (r, x) => {
+      const k = r()
+      if (k < 0.45) {
+        // cactus
+        const g = '#4a8a3c'
+        return rect(x + U, GY - 5 * U, U, 5 * U, g) + rect(x, GY - 4 * U, U, 2 * U, g) + rect(x + 2 * U, GY - 3 * U, U, 2 * U, g)
+      }
+      if (k < 0.75) return tuft(x, '#a88a4a', '#c4a45a')
+      return rock(x, '#b8955a', '#d4b078')
+    },
+    extra: () => disc(70, 24, 6, '#ffd23f') + disc(70, 24, 4, '#fff0a0'),
+  },
+  space: {
+    sky: ['#05010f', '#1a0b3a'],
+    ground: ['#5a5a7a', '#34344a'],
+    cloud: '#7a6aa8',
+    decor: (r, x) => {
+      const k = r()
+      if (k < 0.45) return rect(x, GY + U, 4 * U, U, '#26263a') // crater
+      if (k < 0.8) return rock(x, '#6e6e88', '#8c8ca8')
+      return rect(x + U, GY - 5 * U, U, 5 * U, '#cfcfe0') + rect(x + 2 * U, GY - 5 * U, 3 * U, 2 * U, '#e03a4e') // a flag
+    },
+    extra: now => {
+      const cx = W - 90
+      return stars(now, 44, 11, GY - 30) + disc(cx, 28, 7, '#c97b4a') + disc(cx, 28, 4, '#e09a6a') + rect(cx - 10 * U, 28, 21 * U, 2, '#e8c89a')
+    },
+  },
+}
+
+let THEME = 'meadow'
+let SKY = false
+const AUTO_SCENE: Record<string, string> = { robot: 'meadow', cat: 'home', dragon: 'lava', anime: 'sakura' }
+
 // Scenery on the ground line, the same every draw (seeded), plus drifting clouds.
 const scenery = (now: number) => {
+  const t = THEMES[THEME] ?? (THEMES['meadow'] as Theme)
   const r = rng(4242)
-  let s = `<g shape-rendering="crispEdges"><rect x="0" y="${GY + U}" width="${W}" height="${U}" fill="#5a7d4a" opacity="0.55"/><rect x="0" y="${GY + 2 * U}" width="${W}" height="${U}" fill="#3a4f33" opacity="0.4"/>`
+  let s = `<g shape-rendering="crispEdges"><rect x="0" y="${GY + U}" width="${W}" height="${U}" fill="${t.ground[0]}" opacity="0.55"/><rect x="0" y="${GY + 2 * U}" width="${W}" height="${U}" fill="${t.ground[1]}" opacity="0.4"/>`
   const n = Math.round(W / 26)
   for (let i = 0; i < n; i++) {
     const x = Math.round((10 + r() * (W - 20)) / U) * U
-    const kind = r()
-    if (kind < 0.5) {
-      s += `<rect x="${x}" y="${GY - U}" width="${U}" height="${2 * U}" fill="#5f9d4a"/><rect x="${x + U}" y="${GY - 2 * U}" width="${U}" height="${3 * U}" fill="#4a8a3c"/><rect x="${x + 2 * U}" y="${GY - U}" width="${U}" height="${2 * U}" fill="#5f9d4a"/>`
-    } else if (kind < 0.68) {
-      const petal = ['#ff6fa5', '#ffd23f', '#7fd4ff'][Math.floor(r() * 3)] as string
-      s += `<rect x="${x + U}" y="${GY - 2 * U}" width="${U}" height="${3 * U}" fill="#4a8a3c"/><rect x="${x}" y="${GY - 3 * U}" width="${3 * U}" height="${U}" fill="${petal}"/><rect x="${x + U}" y="${GY - 4 * U}" width="${U}" height="${U}" fill="${petal}"/><rect x="${x + U}" y="${GY - 3 * U}" width="${U}" height="${U}" fill="#fff6c8"/>`
-    } else if (kind < 0.84) {
-      s += `<rect x="${x}" y="${GY - U}" width="${4 * U}" height="${2 * U}" fill="#7d7f86"/><rect x="${x + U}" y="${GY - 2 * U}" width="${2 * U}" height="${U}" fill="#9a9ca4"/>`
-    } else {
-      s += `<rect x="${x + U}" y="${GY - U}" width="${U}" height="${2 * U}" fill="#f1e6d2"/><rect x="${x}" y="${GY - 2 * U}" width="${3 * U}" height="${U}" fill="#d9463a"/><rect x="${x + U}" y="${GY - 2 * U}" width="${U}" height="${U}" fill="#fff"/>`
-    }
+    s += t.decor(r, x)
   }
   s += '</g>'
   // clouds drift left to right; the negative begin keeps their place across redraws
@@ -255,12 +544,19 @@ const scenery = (now: number) => {
     const dur = 80 + i * 30
     const y = 2 + i * 9
     const phase = ((now / 1000 + i * 37) % dur).toFixed(1)
-    s += `<g shape-rendering="crispEdges" fill="#9fb4c8" opacity="0.45"><g><animateTransform attributeName="transform" type="translate" values="-60 ${y};${W + 20} ${y}" dur="${dur}s" begin="-${phase}s" repeatCount="indefinite"/><rect x="6" y="6" width="36" height="6"/><rect x="0" y="12" width="48" height="6"/><rect x="12" y="0" width="18" height="6"/></g></g>`
+    s += `<g shape-rendering="crispEdges" fill="${t.cloud}" opacity="0.45"><g><animateTransform attributeName="transform" type="translate" values="-60 ${y};${W + 20} ${y}" dur="${dur}s" begin="-${phase}s" repeatCount="indefinite"/><rect x="6" y="6" width="36" height="6"/><rect x="0" y="12" width="48" height="6"/><rect x="12" y="0" width="18" height="6"/></g></g>`
   }
-  return s
+  return s + (t.extra ? t.extra(now) : '')
+}
+
+const sky = () => {
+  if (!SKY) return ''
+  const t = THEMES[THEME] ?? (THEMES['meadow'] as Theme)
+  return `<defs><linearGradient id="sky-${THEME}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${t.sky[0]}"/><stop offset="1" stop-color="${t.sky[1]}"/></linearGradient></defs><rect width="${W}" height="${H}" rx="8" fill="url(#sky-${THEME})"/>`
 }
 
 const sceneSvg = (all: Avatar[], now: number) => `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}">
+${sky()}
 ${scenery(now)}
 ${all.map(a => agentSvg(a, now)).join('')}
 </svg>`
@@ -282,7 +578,11 @@ const sprite = (isWorking: boolean, frame: number) => ({
   legs: isWorking && frame % 2 ? '  ' + B + B + '  ' + B + B + '  ' : ' ' + B + B + '    ' + B + B + ' ',
 })
 
-export const register: Register = on => {
+export const register: Register = (on, options) => {
+  const choice = String(options['skin'] ?? 'robot')
+  const scene = String(options['scene'] ?? 'auto')
+  THEME = THEMES[scene] ? scene : (AUTO_SCENE[choice] ?? 'meadow')
+  SKY = options['sky'] === 'filled'
   const agents = new Map<string, Avatar>()
   let colorIx = 1
   let spawned = 0
@@ -290,11 +590,13 @@ export const register: Register = on => {
 
   const make = (id: string, name: string, color: string): Avatar => {
     spawned += 1
+    const skin = choice === 'mixed' ? (SKIN_IDS[(spawned - 1) % SKIN_IDS.length] as string) : SKINS[choice] ? choice : 'robot'
     const r = rng(spawned * 31)
     return {
       id,
       name,
       color,
+      skin,
       isWorking: false,
       tool: '',
       doneAt: 0,
