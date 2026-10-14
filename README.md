@@ -68,7 +68,9 @@ The main character's mood clears after a few seconds; a subagent keeps it until 
 
 ### Agents talking to each other
 
-When an agent sends a message to another agent (SendMessage), a little letter flies between them and their bubbles show `→ name` and `✉ name` for a moment. Only who writes to whom is read, never the text. The main agent is addressed as `main`, others by the name their Agent call gave them or by agent id.
+When an agent sends a message to another agent (SendMessage), the two walk up to each other, take turns "typing" (blinking dots), each shows a feeling (a heart, a `!` or a note), and they walk back to what they were doing. ![Two agents meeting](docs/talk.gif)
+
+Only who writes to whom is read, never the text. The main agent is addressed as `main`, others by the name their Agent call gave them or by agent id.
 
 ### Pull requests and CI
 

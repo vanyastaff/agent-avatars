@@ -17,8 +17,7 @@ type Avatar = {
   waiting: boolean // blocked on you or on something it started
   askingAt: number // the main agent: when a question dialog was last drawn
   handle: string // the name its Agent call gave it, which SendMessage addresses
-  chat: string // what a message to or from it says on its bubble
-  chatAt: number
+  talk: { at: number; x0: number; stand: number; role: 'send' | 'recv'; seed: number } | null // a meeting with another agent
   desc: string
   action: string
   recent: string[]
@@ -130,12 +129,10 @@ const activity = (tool: string) => {
 // How agents are labelled. names: static (the task text), short (trimmed, free) or ai
 // (a small model coins a name). thoughts: static (reading...), action (what it just
 // did, free) or ai (a small model summarises the last few actions).
-type Msg = { from: Avatar; to: Avatar; at: number }
 type Party = { at: number }
-let MSGS: Msg[] = []
 let PARTY: Party | null = null
 let EVENTS = true
-const MSG_MS = 1200
+const TALK_MS = 3600
 const PARTY_MS = 4500
 
 // Sounds are opt-in (option `sound`). The engine plays them through afplay, so only on macOS.
@@ -400,9 +397,7 @@ const tagSvg = (a: Avatar) => {
     return `<g shape-rendering="crispEdges"><rect x="${-bw / 2}" y="${by}" width="${bw}" height="12" fill="#fff" stroke="${stroke}" stroke-width="1"/><rect x="-2" y="${by + 12}" width="4" height="3" fill="#fff"/></g>
 <text x="0" y="${by + 9}" text-anchor="middle" font-family="${MONO}" font-size="9" fill="#222">${esc(label)}</text>`
   }
-  if (a.chat) {
-    s += bubble(a.chat, '#b45cff')
-  } else if (a.isWorking) {
+  if (a.isWorking) {
     s += bubble(bubbleText(a), '#222')
   } else if (moodLabel(a)) {
     s += bubble(moodLabel(a), a.waiting ? '#2b6fd8' : (MOOD_STROKE[a.mood] ?? '#222'))
@@ -437,9 +432,11 @@ const withEffects = (a: Avatar, body: string, now: number) => {
 }
 
 const agentSvg = (a: Avatar, now: number) => {
+  const meeting = a.talk !== null && now - a.talk.at < TALK_MS
   const inner = `<rect x="${-7 * U}" y="${GY}" width="${14 * U}" height="${U}" fill="#888" opacity="0.4" shape-rendering="crispEdges"/>
 <g transform="translate(${-7 * U} ${GY - 10 * U})">${robotBody(SKINS[a.skin] ?? SKINS['robot']!, a.color, a.isWorking, a.mood)}</g>
-${tagSvg(a)}`
+${meeting ? `<g><animate attributeName="opacity" values="1;0;1" keyTimes="0;0.22;0.78" calcMode="discrete" dur="${TALK_MS / 1000}s" begin="-${(Math.max(0, now - (a.talk?.at ?? now)) / 1000).toFixed(2)}s" fill="freeze"/>${tagSvg(a)}</g>${talkBubbles(a, now)}` : tagSvg(a)}`
+  if (meeting) return `<g>${meetingMove(a, now)}${withEffects(a, inner, now)}</g>`
   if (!a.isWorking) return `<g transform="translate(${Math.round(a.restX)} 0)">${withEffects(a, inner, now)}</g>`
 
   const sec = ((now - a.pathStart) / 1000) % a.total
@@ -876,16 +873,46 @@ const sky = () => {
 
 const xOf = (a: Avatar, now: number) => (a.isWorking ? posAt(a, (now - a.pathStart) / 1000) : a.restX)
 
-// A little letter flies from the sender to the receiver.
-const envelopes = (now: number) =>
-  MSGS.map(m => {
-    const age = Math.max(0, now - m.at) / 1000
-    const d = MSG_MS / 1000
-    const y0 = GY - 10 * U - 6
-    const xs = xOf(m.from, now)
-    const xr = xOf(m.to, now)
-    return `<g shape-rendering="crispEdges"><animateTransform attributeName="transform" type="translate" values="${xs.toFixed(0)} 0;${xr.toFixed(0)} 0" dur="${d}s" begin="-${age.toFixed(2)}s" fill="freeze"/><g><animateTransform attributeName="transform" type="translate" values="-6 ${y0};-6 ${y0 - 22};-6 ${y0}" keyTimes="0;0.5;1" calcMode="spline" keySplines="0.3 0 0.7 1;0.3 0 0.7 1" dur="${d}s" begin="-${age.toFixed(2)}s" fill="freeze"/><rect width="12" height="9" fill="#ffffff" stroke="#555" stroke-width="1"/><polyline points="0,0 6,5 12,0" fill="none" stroke="#999" stroke-width="1"/></g></g>`
-  }).join('')
+// Two agents that talk meet in the middle: they walk up to each other, type in turn
+// (blinking dots), both show a feeling (a heart, a "!" or a note), and walk back.
+const heart = ['.X.X.', 'XXXXX', 'XXXXX', '.XXX.', '..X..']
+const bang = ['.X.', '.X.', '.X.', '...', '.X.']
+const note = ['..XX.', '..X.X', '..X..', 'XXX..', 'XXX..']
+const EMOTES: Record<string, { rows: string[]; color: string }> = {
+  heart: { rows: heart, color: '#e03a4e' },
+  bang: { rows: bang, color: '#e08a1f' },
+  note: { rows: note, color: '#5a3fd0' },
+}
+
+// Show `inner` only while the meeting is between fractions f0 and f1 of its length.
+const during = (inner: string, f0: number, f1: number, age: number) =>
+  `<g opacity="0"><animate attributeName="opacity" values="0;1;0" keyTimes="0;${f0};${f1}" calcMode="discrete" dur="${TALK_MS / 1000}s" begin="-${age.toFixed(2)}s" fill="freeze"/>${inner}</g>`
+
+const talkBubbles = (a: Avatar, now: number) => {
+  const t = a.talk
+  if (!t) return ''
+  const age = Math.max(0, now - t.at) / 1000
+  const top = GY - 10 * U - 20 - 4
+  const [w0, w1] = t.role === 'send' ? [0.25, 0.45] : [0.45, 0.65]
+  const dots = [-6, 0, 6].map((x, i) => `<rect x="${x - 1}" y="${top + 4}" width="3" height="3" fill="#222"><animate attributeName="opacity" values="0.2;1;0.2" dur="0.6s" begin="${(i * 0.15).toFixed(2)}s" repeatCount="indefinite"/></rect>`).join('')
+  const typing = `<g shape-rendering="crispEdges"><rect x="-11" y="${top}" width="22" height="11" fill="#fff" stroke="#222" stroke-width="1"/><rect x="-2" y="${top + 11}" width="4" height="3" fill="#fff"/>${dots}</g>`
+  const kinds = [['bang', 'heart'], ['note', 'note'], ['bang', 'bang'], ['heart', 'heart']][t.seed % 4] as string[]
+  const em = EMOTES[kinds[t.role === 'send' ? 0 : 1] as string] as { rows: string[]; color: string }
+  const px = 2
+  const glyph = em.rows
+    .map((row, y) => [...row].map((c, x) => (c === 'X' ? `<rect x="${-(row.length * px) / 2 + x * px}" y="${top + 2 + y * px}" width="${px}" height="${px}" fill="${em.color}"/>` : '')).join(''))
+    .join('')
+  const emote = `<g shape-rendering="crispEdges"><rect x="-9" y="${top - 2}" width="18" height="16" fill="#fff" stroke="#222" stroke-width="1"/><rect x="-2" y="${top + 14}" width="4" height="3" fill="#fff"/>${glyph}</g>`
+  return during(typing, w0, w1, age) + during(emote, 0.66, 0.78, age)
+}
+
+// The sliding motion of an avatar that is in a meeting: out to the meeting point, hold, back.
+const meetingMove = (a: Avatar, now: number) => {
+  const t = a.talk as NonNullable<Avatar['talk']>
+  const age = Math.max(0, now - t.at) / 1000
+  const endX = a.isWorking ? posAt(a, (t.at + TALK_MS - a.pathStart) / 1000) : a.restX
+  return `<animateTransform attributeName="transform" type="translate" values="${t.x0.toFixed(0)} 0;${t.stand.toFixed(0)} 0;${t.stand.toFixed(0)} 0;${endX.toFixed(0)} 0" keyTimes="0;0.22;0.78;1" dur="${TALK_MS / 1000}s" begin="-${age.toFixed(2)}s" fill="freeze"/>`
+}
 
 // A merged pull request: fireworks and confetti over the whole scene, no text.
 const celebration = (now: number) => {
@@ -921,7 +948,6 @@ const sceneSvg = (all: Avatar[], now: number) => `<svg xmlns="http://www.w3.org/
 ${sky()}
 ${scenery(now)}
 ${all.map(a => agentSvg(a, now)).join('')}
-${envelopes(now)}
 ${celebration(now)}
 </svg>`
 
@@ -964,8 +990,7 @@ export const register: Register = (on, options) => {
       name: NAMES === 'static' ? name : shorten(name),
       desc: name,
       handle: '',
-      chat: '',
-      chatAt: 0,
+      talk: null,
       mood: '',
       moodAt: 0,
       waiting: false,
@@ -1070,13 +1095,9 @@ export const register: Register = (on, options) => {
         PARTY = null
         changed = true
       }
-      if (MSGS.some(m => now - m.at > MSG_MS)) {
-        MSGS = MSGS.filter(m => now - m.at <= MSG_MS)
-        changed = true
-      }
       for (const a of [mainAv, ...agents.values()]) {
-        if (a.chat && now - a.chatAt > 2500) {
-          a.chat = ''
+        if (a.talk && now - a.talk.at > TALK_MS) {
+          a.talk = null
           changed = true
         }
       }
@@ -1202,11 +1223,12 @@ export const register: Register = (on, options) => {
     const to = e.to === 'main' ? mainAv : [...agents.values()].find(a => a.id === e.to || (a.handle !== '' && a.handle === e.to))
     if (from && to && from !== to) {
       const now = Date.now()
-      MSGS = [...MSGS, { from, to, at: now }]
-      from.chat = '→ ' + to.name
-      to.chat = '✉ ' + from.name
-      from.chatAt = now
-      to.chatAt = now
+      const xf = xOf(from, now)
+      const xt = xOf(to, now)
+      const meet = Math.max(60, Math.min(W - 60, (xf + xt) / 2))
+      const gap = 26
+      from.talk = { at: now, x0: xf, stand: xf <= xt ? meet - gap : meet + gap, role: 'send', seed: now % 997 }
+      to.talk = { at: now, x0: xt, stand: xf <= xt ? meet + gap : meet - gap, role: 'recv', seed: now % 997 }
       $.ui.invalidate('ui.render')
     }
     return next(e)
