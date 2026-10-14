@@ -43,6 +43,15 @@ All 13 scenes (the animated parts are in the GIFs above):
 
 ![All scenes](docs/scenes.png)
 
+### Names and speech bubbles
+
+| Option | Values | Default |
+| --- | --- | --- |
+| `names` (Agent names) | `static` (the task text as is), `short` (trimmed to the point, free), `ai` (a small model coins a name) | `short` |
+| `thoughts` (Speech bubbles) | `static` (`reading…`, `running…`), `action` (what the agent just did: `read switch.rs`, `$ cargo test`; free), `ai` (a small model sums up the last actions) | `action` |
+
+`short` turns "Implement T9 Switch and NavigationBar" into "T9 Switch…". `ai` calls a small model (Haiku, a few tokens per reply): one request per new agent for the name, and at most one every 12 seconds per working agent for the bubble. Those requests use your Claude usage, which is why both are opt-in. The reply is only ever drawn as plain text.
+
 Each agent keeps its own colour (for the anime characters that is the hair colour), so you can tell them apart in any skin.
 
 ## Troubleshooting

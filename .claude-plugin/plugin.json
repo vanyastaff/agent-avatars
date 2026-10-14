@@ -1,6 +1,6 @@
 {
   "name": "agent-avatars",
-  "version": "0.2.2",
+  "version": "0.3.0",
   "description": "Pixel-art characters (robots, cats, dragons, anime) for the main agent and every subagent: they wander a little scene above the prompt while working, show what they are doing, and sleep when done.",
   "author": {
     "name": "vanyastaff"
@@ -52,6 +52,28 @@
       "options": [
         "transparent",
         "filled"
+      ]
+    },
+    "names": {
+      "type": "string",
+      "title": "Agent names",
+      "description": "static: the task text as is. short: trimmed to the point, free. ai: a small model coins a name (one small request per agent, uses your quota).",
+      "default": "short",
+      "options": [
+        "static",
+        "short",
+        "ai"
+      ]
+    },
+    "thoughts": {
+      "type": "string",
+      "title": "Speech bubbles",
+      "description": "static: reading/searching/running. action: what the agent just did (read file.rs, $ cargo test), free. ai: a small model sums up the last actions (a small request every ~12 s per working agent, uses your quota).",
+      "default": "action",
+      "options": [
+        "static",
+        "action",
+        "ai"
       ]
     }
   }
