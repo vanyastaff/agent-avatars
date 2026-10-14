@@ -5,6 +5,8 @@ A [Claude Code mod](https://code.claude.com/docs/en/plugins/mods/overview) that 
 - **Working:** the robot walks around the scene, hops, and shows what it is doing in a speech bubble (`reading…`, `searching…`, `running…`, `writing…`, `browsing…`, `delegating…`).
 - **Idle or done:** it stands still, blinks and sleeps (`z z`).
 - **Enter and exit:** a new subagent pops in with a bounce; a finished one flickers, floats up and vanishes in a puff of pixels after 15 seconds.
+
+![An agent appears, works and leaves](docs/spawn-and-leave.gif)
 - **Scenery:** a themed little world on a transparent background (or with a sky, if you like), with drifting pixel clouds.
 
 ![Robots working at an office](docs/office.gif)
@@ -66,6 +68,8 @@ Agents react to how things end, without reading tool calls or prompts:
 
 The main character's mood clears after a few seconds; a subagent keeps it until it leaves the scene.
 
+![Waiting, done, stopped, your turn, failed](docs/moods.gif)
+
 ### Agents talking to each other
 
 When an agent sends a message to another agent (SendMessage), the two walk up to each other, take turns "typing" (blinking dots), each shows a feeling (a heart, a `!` or a note), and they walk back to what they were doing. ![Two agents meeting](docs/talk.gif)
@@ -75,6 +79,8 @@ Only who writes to whom is read, never the text. The main agent is addressed as 
 ### Pull requests and CI
 
 If your session receives GitHub events (for example while it watches a pull request), the scene reacts without writing anything: a merged pull request sets off fireworks and confetti and every character cheers; a failed CI run makes them sad. Only the event's kind and outcome are read. Switch it off with `events: off`.
+
+![A merged pull request](docs/pr-merged.gif)
 
 Short 8-bit blips can play when an agent appears, finishes, fails or asks you something. They are off by default (`sound`: `off` / `on`). The engine plays them through `afplay`, so they work on macOS only; on Windows and Linux the option does nothing.
 
