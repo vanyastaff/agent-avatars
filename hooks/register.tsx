@@ -131,7 +131,7 @@ const activity = (tool: string) => {
 // (a small model coins a name). thoughts: static (reading...), action (what it just
 // did, free) or ai (a small model summarises the last few actions).
 type Msg = { from: Avatar; to: Avatar; at: number }
-type Party = { at: number; text: string; kind: 'merged' | 'ok' | 'bad' | 'info' }
+type Party = { at: number }
 let MSGS: Msg[] = []
 let PARTY: Party | null = null
 let EVENTS = true
@@ -887,27 +887,34 @@ const envelopes = (now: number) =>
     return `<g shape-rendering="crispEdges"><animateTransform attributeName="transform" type="translate" values="${xs.toFixed(0)} 0;${xr.toFixed(0)} 0" dur="${d}s" begin="-${age.toFixed(2)}s" fill="freeze"/><g><animateTransform attributeName="transform" type="translate" values="-6 ${y0};-6 ${y0 - 22};-6 ${y0}" keyTimes="0;0.5;1" calcMode="spline" keySplines="0.3 0 0.7 1;0.3 0 0.7 1" dur="${d}s" begin="-${age.toFixed(2)}s" fill="freeze"/><rect width="12" height="9" fill="#ffffff" stroke="#555" stroke-width="1"/><polyline points="0,0 6,5 12,0" fill="none" stroke="#999" stroke-width="1"/></g></g>`
   }).join('')
 
-// A banner for what happened outside the session (a PR merged, CI done), with confetti for a merge.
-const banner = (now: number) => {
+// A merged pull request: fireworks and confetti over the whole scene, no text.
+const celebration = (now: number) => {
   if (!PARTY) return ''
   const age = Math.max(0, now - PARTY.at) / 1000
-  const d = PARTY_MS / 1000
-  const fill = PARTY.kind === 'merged' ? '#7a3fd0' : PARTY.kind === 'ok' ? '#2f9a5a' : PARTY.kind === 'bad' ? '#d9463a' : '#555555'
-  const w = PARTY.text.length * 6.2 + 16
-  let s = `<g shape-rendering="crispEdges"><rect x="${W / 2 - w / 2}" y="6" width="${w}" height="14" fill="${fill}"/></g><text x="${W / 2}" y="16" text-anchor="middle" font-family="${MONO}" font-weight="bold" font-size="10" fill="#fff">${esc(PARTY.text)}</text>`
-  s = `<g><animate attributeName="opacity" values="0;1;1;0" keyTimes="0;0.06;0.85;1" dur="${d}s" begin="-${age.toFixed(2)}s" fill="freeze"/>${s}</g>`
-  if (PARTY.kind === 'merged') {
-    const r = rng(PARTY.at % 9973)
-    const colors = ['#ff6fa5', '#ffd23f', '#5fe0ff', '#7fe08a', '#b45cff', '#ff8a1f']
-    let c = ''
-    for (let i = 0; i < 40; i++) {
-      const x = Math.round(r() * W)
-      const dur = 1.6 + r() * 1.6
-      c += `<rect x="${x}" y="-6" width="3" height="3" fill="${pick(r, colors)}"><animateTransform attributeName="transform" type="translate" values="0 0;${Math.round(r() * 30 - 15)} ${H + 8}" dur="${dur.toFixed(2)}s" begin="-${Math.min(age, dur).toFixed(2)}s" fill="freeze"/><animate attributeName="opacity" values="1;1;0" keyTimes="0;0.8;1" dur="${dur.toFixed(2)}s" begin="-${Math.min(age, dur).toFixed(2)}s" fill="freeze"/></rect>`
+  const r = rng(PARTY.at % 9973)
+  const colors = ['#ff6fa5', '#ffd23f', '#5fe0ff', '#7fe08a', '#b45cff', '#ff8a1f']
+  let out = ''
+  // three bursts, half a second apart
+  for (let i = 0; i < 3; i++) {
+    const cx = Math.round(W * (0.2 + 0.3 * i) + r() * 40 - 20)
+    const cy = 18 + Math.round(r() * 26)
+    const color = pick(r, colors)
+    const begin = (i * 0.5 - age).toFixed(2)
+    for (let k = 0; k < 8; k++) {
+      const ang = (k * Math.PI) / 4
+      const dx = Math.round(Math.cos(ang) * 22)
+      const dy = Math.round(Math.sin(ang) * 22)
+      out += `<rect x="${cx}" y="${cy}" width="3" height="3" fill="${color}" opacity="0"><animateTransform attributeName="transform" type="translate" values="0 0;${dx} ${dy}" dur="0.9s" begin="${begin}s" fill="freeze"/><animate attributeName="opacity" values="0;1;1;0" keyTimes="0;0.05;0.6;1" dur="0.9s" begin="${begin}s" fill="freeze"/></rect>`
+      out += `<rect x="${cx}" y="${cy}" width="3" height="3" fill="#ffffff" opacity="0"><animateTransform attributeName="transform" type="translate" values="0 0;${Math.round(dx / 2)} ${Math.round(dy / 2)}" dur="0.9s" begin="${begin}s" fill="freeze"/><animate attributeName="opacity" values="0;1;0" keyTimes="0;0.2;1" dur="0.9s" begin="${begin}s" fill="freeze"/></rect>`
     }
-    s += `<g shape-rendering="crispEdges">${c}</g>`
   }
-  return s
+  for (let i = 0; i < 40; i++) {
+    const x = Math.round(r() * W)
+    const dur = 1.6 + r() * 1.6
+    const t = Math.min(age, dur).toFixed(2)
+    out += `<rect x="${x}" y="-6" width="3" height="3" fill="${pick(r, colors)}"><animateTransform attributeName="transform" type="translate" values="0 0;${Math.round(r() * 30 - 15)} ${H + 8}" dur="${dur.toFixed(2)}s" begin="-${t}s" fill="freeze"/><animate attributeName="opacity" values="1;1;0" keyTimes="0;0.8;1" dur="${dur.toFixed(2)}s" begin="-${t}s" fill="freeze"/></rect>`
+  }
+  return `<g shape-rendering="crispEdges">${out}</g>`
 }
 
 const sceneSvg = (all: Avatar[], now: number) => `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}">
@@ -915,7 +922,7 @@ ${sky()}
 ${scenery(now)}
 ${all.map(a => agentSvg(a, now)).join('')}
 ${envelopes(now)}
-${banner(now)}
+${celebration(now)}
 </svg>`
 
 // ---- Terminal: block-character robots --------------------------------------
@@ -1206,31 +1213,25 @@ export const register: Register = (on, options) => {
   })
 
   // What happens on GitHub reaches the session as an external event; only its kind
-  // and outcome are read.
+  // and outcome are read, and nothing is written on screen.
   on('session.receive', async ($, e, next) => {
     const ev = e.event
     if (EVENTS && ev && ev.source === 'github') {
       const data = ev.data
-      const pr = typeof data['pr'] === 'string' ? ` ${clip(data['pr'] as string, 22)}` : ''
       const outcome = String(data['outcome'] ?? data['conclusion'] ?? data['state'] ?? data['status'] ?? '').toLowerCase()
-      let party: Party | null = null
       const now = Date.now()
-      if (ev.kind.startsWith('pull_request')) {
-        if (outcome === 'merged' || data['merged'] === true) party = { at: now, text: 'PR merged' + pr, kind: 'merged' }
-        else if (ev.kind.endsWith('closed')) party = { at: now, text: 'PR closed' + pr, kind: 'info' }
-      } else if (ev.kind.startsWith('check')) {
-        if (/fail|error|timed_out|cancel/.test(outcome)) party = { at: now, text: 'CI failed', kind: 'bad' }
-        else if (/success|pass/.test(outcome)) party = { at: now, text: 'CI passed', kind: 'ok' }
-      }
-      if (party) {
-        PARTY = party
-        if (party.kind === 'merged') {
-          for (const a of [mainAv, ...agents.values()]) {
-            a.mood = 'happy'
-            a.moodAt = now
-          }
+      if (ev.kind.startsWith('pull_request') && (outcome === 'merged' || data['merged'] === true)) {
+        PARTY = { at: now }
+        for (const a of [mainAv, ...agents.values()]) {
+          a.mood = 'happy'
+          a.moodAt = now
         }
-        $.ui.toast(party.text)
+        $.ui.invalidate('ui.render')
+      } else if (ev.kind.startsWith('check') && /fail|error|timed_out/.test(outcome)) {
+        for (const a of [mainAv, ...agents.values()]) {
+          a.mood = 'sad'
+          a.moodAt = now
+        }
         $.ui.invalidate('ui.render')
       }
     }

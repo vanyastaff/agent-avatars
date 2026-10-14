@@ -72,7 +72,7 @@ When an agent sends a message to another agent (SendMessage), a little letter fl
 
 ### Pull requests and CI
 
-If your session receives GitHub events (for example while it watches a pull request), the scene reacts: `PR merged` with confetti and a toast, `PR closed`, `CI passed`, `CI failed`. Only the event's kind and outcome are read. Switch it off with `events: off`.
+If your session receives GitHub events (for example while it watches a pull request), the scene reacts without writing anything: a merged pull request sets off fireworks and confetti and every character cheers; a failed CI run makes them sad. Only the event's kind and outcome are read. Switch it off with `events: off`.
 
 Short 8-bit blips can play when an agent appears, finishes, fails or asks you something. They are off by default (`sound`: `off` / `on`). The engine plays them through `afplay`, so they work on macOS only; on Windows and Linux the option does nothing.
 
