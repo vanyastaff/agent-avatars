@@ -1,6 +1,6 @@
 {
   "name": "agent-avatars",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Pixel-art characters (robots, cats, dragons, anime) for the main agent and every subagent: they wander a little scene above the prompt while working, show what they are doing, and sleep when done.",
   "author": {
     "name": "vanyastaff"
@@ -36,7 +36,12 @@
         "snow",
         "night",
         "desert",
-        "space"
+        "space",
+        "office",
+        "beach",
+        "city",
+        "ocean",
+        "halloween"
       ]
     },
     "sky": {

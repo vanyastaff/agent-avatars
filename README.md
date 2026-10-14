@@ -26,8 +26,10 @@ Open `/config` and find the mod's rows. After a change the mod reloads by itself
 | Option | Values | Default |
 | --- | --- | --- |
 | `skin` (Character) | `robot`, `cat`, `dragon`, `anime`, `mixed` (every agent is a different one) | `robot` |
-| `scene` (Scene) | `auto` (follows the character), `meadow`, `home`, `lava`, `sakura`, `snow`, `night`, `desert`, `space` | `auto` |
+| `scene` (Scene) | `auto` (follows the character), `meadow`, `home`, `lava`, `sakura`, `snow`, `night`, `desert`, `space`, `office`, `beach`, `city`, `ocean`, `halloween` | `auto` |
 | `sky` (Background) | `transparent`, `filled` (paints a sky behind the scenery) | `transparent` |
+
+Scenes at a glance: `office` has desks with flickering monitors and your agents walk from desk to desk; `beach` has palms, umbrellas and gulls; `city` is a neon skyline at night; `ocean` has seaweed, coral, treasure chests and rising bubbles; `halloween` has pumpkins, tombstones and bats under a big moon.
 
 Each agent keeps its own colour (for the anime characters that is the hair colour), so you can tell them apart in any skin.
 

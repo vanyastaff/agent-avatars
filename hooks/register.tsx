@@ -50,7 +50,9 @@ const rng = (seed: number) => {
 // A looping walk: stand still at a point (PAUSE s), walk to the next, and so on.
 const makePath = (a: Avatar) => {
   const r = rng(a.seed * 7919 + a.epoch * 104729)
-  const pts = [Math.min(a.restX, W - 40), ...Array.from({ length: 4 }, () => 40 + r() * (W - 80))]
+  const spots = THEMES[THEME]?.anchors?.() ?? []
+  const next = () => (spots.length ? (spots[Math.floor(r() * spots.length)] as number) : 40 + r() * (W - 80))
+  const pts = [Math.min(a.restX, W - 40), ...Array.from({ length: 4 }, next)]
   const segs: Seg[] = []
   let t = 0
   pts.forEach((p, i) => {
@@ -320,6 +322,10 @@ type Theme = {
   cloud: string
   decor: (r: () => number, x: number) => string
   extra?: (now: number) => string
+  // a fixed arrangement drawn instead of random decor, and the spots agents like to walk to
+  layout?: (now: number) => string
+  anchors?: () => number[]
+  noClouds?: boolean
 }
 
 const rect = (x: number, y: number, w: number, h: number, fill: string) =>
@@ -355,6 +361,12 @@ const stars = (now: number, n: number, seed: number, maxY: number) => {
     s += `<rect x="${x}" y="${y}" width="2" height="2" fill="#ffffff" opacity="0.8"><animate attributeName="opacity" values="0.9;0.25;0.9" dur="${dur.toFixed(1)}s" begin="-${ph}s" repeatCount="indefinite"/></rect>`
   }
   return s
+}
+
+const officeDesks = () => {
+  const xs: number[] = []
+  for (let x = 60; x < W - 130; x += 130) xs.push(x)
+  return xs
 }
 
 const THEMES: Record<string, Theme> = {
@@ -522,6 +534,167 @@ const THEMES: Record<string, Theme> = {
       return stars(now, 44, 11, GY - 30) + disc(cx, 28, 7, '#c97b4a') + disc(cx, 28, 4, '#e09a6a') + rect(cx - 10 * U, 28, 21 * U, 2, '#e8c89a')
     },
   },
+  office: {
+    sky: ['#cfd8e3', '#e8edf3'],
+    ground: ['#7a8a9a', '#4a5868'],
+    cloud: '#ffffff',
+    noClouds: true,
+    decor: () => '',
+    anchors: () => officeDesks().map(d => d - 7 * U),
+    layout: now => {
+      let s = ''
+      officeDesks().forEach((dx, i) => {
+        const flicker = [1.3, 1.9, 2.4, 1.1][i % 4] as number
+        // desk, monitor with a flickering screen, keyboard and a mug
+        s += rect(dx, GY - 4 * U, 12 * U, U, '#8b6b4a') + rect(dx + U, GY - 3 * U, U, 3 * U, '#6b4f36') + rect(dx + 10 * U, GY - 3 * U, U, 3 * U, '#6b4f36')
+        s += rect(dx + 3 * U, GY - 10 * U, 7 * U, 5 * U, '#2b2f3a') + rect(dx + 6 * U, GY - 5 * U, U, U, '#2b2f3a')
+        s += `<rect x="${dx + 4 * U}" y="${GY - 9 * U}" width="${5 * U}" height="${3 * U}" fill="#5fe0ff"><animate attributeName="opacity" values="1;0.55;0.9;0.7;1" dur="${flicker}s" repeatCount="indefinite"/></rect>`
+        s += rect(dx + 4 * U, GY - 8 * U, 3 * U, 2, '#2b6f86') + rect(dx + 4 * U, GY - 7 * U, 4 * U, 2, '#2b6f86')
+        s += rect(dx + 4 * U, GY - 5 * U, 4 * U, 2, '#c9ced6') + rect(dx + 10 * U - 1, GY - 6 * U, U, 2 * U, '#e8e8e8')
+      })
+      // plants and a water cooler between the desks
+      const xs = officeDesks()
+      xs.forEach((dx, i) => {
+        const gx = dx + 12 * U + 4 * U
+        if (gx > W - 20) return
+        if (i % 2 === 0) {
+          s += rect(gx, GY - 2 * U, 3 * U, 2 * U, '#a8603a') + rect(gx, GY - 5 * U, U, 3 * U, '#3f9a4a') + rect(gx + U, GY - 6 * U, U, 4 * U, '#4fb35a') + rect(gx + 2 * U, GY - 4 * U, U, 2 * U, '#3f9a4a')
+        } else {
+          s += rect(gx, GY - 5 * U, 3 * U, 3 * U, '#9fd8ff') + rect(gx, GY - 2 * U, 3 * U, 2 * U, '#e8edf3') + rect(gx + U, GY - 3 * U, U, U, '#5fa8d8')
+        }
+      })
+      return s
+    },
+    extra: now => {
+      if (!SKY) return ''
+      // windows and a wall clock
+      let s = ''
+      for (let i = 0; i < 4; i++) {
+        const wx = 40 + i * Math.round((W - 120) / 3)
+        s += rect(wx, 8, 14 * U, 9 * U, '#7a8a9a') + rect(wx + 2, 10, 14 * U - 4, 9 * U - 4, '#9fd8ff') + rect(wx + 7 * U - 1, 10, 2, 9 * U - 4, '#7a8a9a')
+      }
+      return `<g shape-rendering="crispEdges">${s}${disc(W - 60, 12, 3, '#ffffff')}${rect(W - 61, 8, 2, 5, '#2b2b2b')}${rect(W - 61, 11, 5, 2, '#2b2b2b')}</g>`
+    },
+  },
+  beach: {
+    sky: ['#7fd3ff', '#e6f7ff'],
+    ground: ['#f0d9a0', '#d4b87a'],
+    cloud: '#ffffff',
+    decor: (r, x) => {
+      const k = r()
+      if (k < 0.25) {
+        // palm tree
+        return rect(x + U, GY - 6 * U, U, 6 * U, '#8a5a2a') + rect(x - U, GY - 7 * U, 5 * U, U, '#3f9a4a') + rect(x - 2 * U, GY - 6 * U, 2 * U, U, '#2f7a3a') + rect(x + 3 * U, GY - 6 * U, 2 * U, U, '#2f7a3a') + rect(x, GY - 8 * U, 3 * U, U, '#4fb35a')
+      }
+      if (k < 0.4) {
+        // umbrella
+        return rect(x + 3 * U, GY - 6 * U, U, 6 * U, '#dddddd') + rect(x, GY - 7 * U, 7 * U, U, '#e03a4e') + rect(x + U, GY - 8 * U, 5 * U, U, '#ffffff') + rect(x + 2 * U, GY - 9 * U, 3 * U, U, '#e03a4e')
+      }
+      if (k < 0.6) return rect(x, GY - 2 * U, 5 * U, 2 * U, '#e6c98a') + rect(x, GY - 3 * U, U, U, '#e6c98a') + rect(x + 2 * U, GY - 3 * U, U, U, '#e6c98a') + rect(x + 4 * U, GY - 3 * U, U, U, '#e6c98a')
+      if (k < 0.8) return rect(x, GY - U, 3 * U, U, '#ff8a3a') + rect(x + U, GY - 2 * U, U, U, '#ff8a3a')
+      return rect(x, GY - U, 2 * U, U, '#f4b6c2') + rect(x + U, GY - 2 * U, U, U, '#f4b6c2')
+    },
+    extra: now => {
+      let s = disc(W - 70, 22, 6, '#ffd23f') + disc(W - 70, 22, 4, '#fff0a0')
+      for (let i = 0; i < 3; i++) {
+        const dur = 30 + i * 12
+        const ph = ((now / 1000 + i * 11) % dur).toFixed(1)
+        const y = 14 + i * 12
+        s += `<g fill="#ffffff"><animateTransform attributeName="transform" type="translate" values="-20 ${y};${W + 20} ${y}" dur="${dur}s" begin="-${ph}s" repeatCount="indefinite"/>${rect(0, 0, U, U, '#fff')}${rect(U, -U, U, U, '#fff')}${rect(2 * U, 0, U, U, '#fff')}${rect(3 * U, -U, U, U, '#fff')}${rect(4 * U, 0, U, U, '#fff')}</g>`
+      }
+      return `<g shape-rendering="crispEdges">${s}</g>`
+    },
+  },
+  city: {
+    sky: ['#120a2a', '#3a1a5c'],
+    ground: ['#2a2a40', '#16162a'],
+    cloud: '#5a3a7a',
+    decor: (r, x) => {
+      const k = r()
+      if (k < 0.4) return rect(x + U, GY - 7 * U, U, 7 * U, '#555a70') + rect(x, GY - 8 * U, 3 * U, U, '#ffe9a0') + `<rect x="${x - U}" y="${GY - 7 * U}" width="${5 * U}" height="${3 * U}" fill="#ffe9a0" opacity="0.12"/>`
+      if (k < 0.65) return rect(x, GY - 3 * U, 3 * U, 3 * U, '#3a4a5a') + rect(x, GY - 3 * U, 3 * U, U, '#52667a')
+      return rect(x, GY + U, 4 * U, U, pick(r, ['#5fe0ff', '#ff6fa5', '#b45cff'])).replace('/>', ' opacity="0.55"/>')
+    },
+    extra: now => {
+      const r = rng(5)
+      let s = ''
+      let x = -4
+      while (x < W) {
+        const w = 24 + Math.round(r() * 24)
+        const h = 22 + Math.round(r() * 38)
+        s += rect(x, GY - h, w, h, '#1c1238')
+        for (let wy = GY - h + 6; wy < GY - 8; wy += 8) {
+          for (let wx = x + 5; wx < x + w - 5; wx += 8) {
+            if (r() < 0.4) {
+              const col = pick(r, ['#ffd23f', '#5fe0ff', '#ff6fa5'])
+              s += r() < 0.15 ? `<rect x="${wx}" y="${wy}" width="3" height="3" fill="${col}"><animate attributeName="opacity" values="1;0.2;1" dur="${(2 + r() * 3).toFixed(1)}s" repeatCount="indefinite"/></rect>` : rect(wx, wy, 3, 3, col)
+            }
+          }
+        }
+        x += w + 4
+      }
+      // a neon sign
+      s += `<rect x="${Math.round(W * 0.55)}" y="${GY - 52}" width="30" height="6" fill="#ff3fa0"><animate attributeName="opacity" values="1;1;0.3;1;0.5;1" dur="3s" repeatCount="indefinite"/></rect>`
+      return `<g shape-rendering="crispEdges">${s}</g>`
+    },
+  },
+  ocean: {
+    sky: ['#0a3a6a', '#1c8fb8'],
+    ground: ['#c9b27a', '#8e7a4a'],
+    cloud: '#8fe0ff',
+    noClouds: true,
+    decor: (r, x) => {
+      const k = r()
+      if (k < 0.4) {
+        // seaweed, swaying
+        const g = '#2f9a5a'
+        return `<g><animateTransform attributeName="transform" type="translate" values="0 0;3 0;0 0;-3 0;0 0" dur="${(2.5 + r() * 2).toFixed(1)}s" repeatCount="indefinite"/>${rect(x, GY - U, U, U, g)}${rect(x + U / 3, GY - 2 * U, U, U, g)}${rect(x, GY - 3 * U, U, U, g)}${rect(x + U / 3, GY - 4 * U, U, U, g)}${rect(x, GY - 5 * U, U, U, g)}</g>`
+      }
+      if (k < 0.65) return rect(x, GY - 3 * U, 3 * U, 3 * U, '#ff7a5a') + rect(x - U, GY - 2 * U, U, 2 * U, '#ff9a7a') + rect(x + 3 * U, GY - 2 * U, U, 2 * U, '#ff9a7a') + rect(x + U, GY - 4 * U, U, U, '#ff7a5a')
+      if (k < 0.85) return rect(x, GY - 3 * U, 5 * U, 3 * U, '#8a5a2a') + rect(x, GY - 4 * U, 5 * U, U, '#a8743a') + rect(x + 2 * U, GY - 3 * U, U, U, '#ffd23f')
+      return rect(x, GY - U, 2 * U, U, '#f4b6c2') + rect(x + U, GY - 2 * U, U, U, '#f4b6c2')
+    },
+    extra: now => {
+      const r = rng(21)
+      let s = ''
+      for (let i = 0; i < 3; i++) {
+        const x = 60 + i * Math.round((W - 160) / 2)
+        s += `<polygon points="${x},0 ${x + 18},0 ${x + 60},${GY} ${x + 20},${GY}" fill="#ffffff" opacity="0.07"/>`
+      }
+      for (let i = 0; i < 16; i++) {
+        const x = Math.round(r() * W)
+        const dur = 5 + r() * 5
+        const ph = ((now / 1000 + r() * 20) % dur).toFixed(1)
+        s += `<rect x="${x}" y="${GY}" width="3" height="3" fill="#bfeeff" opacity="0.7"><animateTransform attributeName="transform" type="translate" values="0 0;${Math.round(r() * 14 - 7)} -${GY}" dur="${dur.toFixed(1)}s" begin="-${ph}s" repeatCount="indefinite"/></rect>`
+      }
+      return `<g shape-rendering="crispEdges">${s}</g>`
+    },
+  },
+  halloween: {
+    sky: ['#1a0f2a', '#4a2a4a'],
+    ground: ['#3a2f3f', '#241c28'],
+    cloud: '#6a5a7a',
+    decor: (r, x) => {
+      const k = r()
+      if (k < 0.35) return rect(x, GY - 4 * U, 3 * U, 4 * U, '#8a8a9a') + rect(x + U, GY - 5 * U, U, U, '#8a8a9a') + rect(x + U, GY - 3 * U, U, U, '#5a5a6a')
+      if (k < 0.6) {
+        // jack-o'-lantern with a glowing face
+        return rect(x, GY - 3 * U, 5 * U, 3 * U, '#ff8a1f') + rect(x + 2 * U, GY - 4 * U, U, U, '#4a8a3c') + `<g fill="#ffd23f"><rect x="${x + U}" y="${GY - 2 * U}" width="${U}" height="${U}"/><rect x="${x + 3 * U}" y="${GY - 2 * U}" width="${U}" height="${U}"/><rect x="${x + 2 * U}" y="${GY - U}" width="${U}" height="${U}"/><animate attributeName="opacity" values="1;0.6;1" dur="1.6s" repeatCount="indefinite"/></g>`
+      }
+      if (k < 0.8) return rect(x + 2 * U, GY - 6 * U, U, 6 * U, '#4a3a2a') + rect(x, GY - 5 * U, 2 * U, U, '#4a3a2a') + rect(x, GY - 6 * U, U, U, '#4a3a2a') + rect(x + 3 * U, GY - 4 * U, 2 * U, U, '#4a3a2a') + rect(x + 4 * U, GY - 5 * U, U, U, '#4a3a2a')
+      return rect(x + U, GY - 3 * U, U, 3 * U, '#e8e0c0') + `<rect x="${x + U}" y="${GY - 4 * U}" width="${U}" height="${U}" fill="#ffb84a"><animate attributeName="opacity" values="1;0.5;1;0.8" dur="0.9s" repeatCount="indefinite"/></rect>`
+    },
+    extra: now => {
+      let s = disc(W - 80, 26, 8, '#ffb84a') + disc(W - 80, 26, 6, '#ffd37a') + stars(now, 14, 3, GY - 40)
+      for (let i = 0; i < 4; i++) {
+        const dur = 14 + i * 5
+        const ph = ((now / 1000 + i * 6) % dur).toFixed(1)
+        const y = 10 + i * 12
+        s += `<g fill="#0d0814"><animateTransform attributeName="transform" type="translate" values="${i % 2 ? W + 20 : -20} ${y};${i % 2 ? -20 : W + 20} ${y}" dur="${dur}s" begin="-${ph}s" repeatCount="indefinite"/>${rect(U, 0, U, U, '#0d0814')}<g><animateTransform attributeName="transform" type="translate" values="0 0;0 -${U}" dur="0.3s" calcMode="discrete" repeatCount="indefinite"/>${rect(-U, 0, 2 * U, U, '#0d0814')}${rect(2 * U, 0, 2 * U, U, '#0d0814')}</g></g>`
+      }
+      return `<g shape-rendering="crispEdges">${s}</g>`
+    },
+  },
 }
 
 let THEME = 'meadow'
@@ -533,14 +706,18 @@ const scenery = (now: number) => {
   const t = THEMES[THEME] ?? (THEMES['meadow'] as Theme)
   const r = rng(4242)
   let s = `<g shape-rendering="crispEdges"><rect x="0" y="${GY + U}" width="${W}" height="${U}" fill="${t.ground[0]}" opacity="0.55"/><rect x="0" y="${GY + 2 * U}" width="${W}" height="${U}" fill="${t.ground[1]}" opacity="0.4"/>`
-  const n = Math.round(W / 26)
-  for (let i = 0; i < n; i++) {
-    const x = Math.round((10 + r() * (W - 20)) / U) * U
-    s += t.decor(r, x)
+  if (t.layout) {
+    s += t.layout(now)
+  } else {
+    const n = Math.round(W / 26)
+    for (let i = 0; i < n; i++) {
+      const x = Math.round((10 + r() * (W - 20)) / U) * U
+      s += t.decor(r, x)
+    }
   }
   s += '</g>'
   // clouds drift left to right; the negative begin keeps their place across redraws
-  for (let i = 0; i < 3; i++) {
+  for (let i = 0; i < (t.noClouds ? 0 : 3); i++) {
     const dur = 80 + i * 30
     const y = 2 + i * 9
     const phase = ((now / 1000 + i * 37) % dur).toFixed(1)
