@@ -27,3 +27,9 @@ Publication complete on 2026-10-16: implementation commit 63db4e6 pushed to main
 The named marketplace refresh and user-scoped plugin update succeeded; installed
 agent-avatars is enabled at 0.6.0. Restart Claude Code to apply the updated code.
 See decisions/devops/agent-theater.md for commands and rollback guidance.
+
+Event-choreography follow-up complete locally as 0.7.0: personality-led duets and
+multi-stage real-tool actions. 54 native tests, strict validation and diff checks
+pass. Production preview contact sheet inspected. No publication/install update
+for this follow-up; live application playback remains unverified. Details:
+decisions/sde/event-choreography.md and reviews/event-choreography.md.

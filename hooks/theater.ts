@@ -15,9 +15,117 @@ export type Liveliness = 'quiet' | 'normal' | 'lively'
 export type WorkKind = 'plan' | 'think' | 'reply' | 'read' | 'search' | 'craft' | 'run' | 'scout' | 'dispatch' | 'rest' | 'wait'
 type Prop = 'book' | 'notebook' | 'upside-book' | 'stack' | 'map' | 'scroll' | 'magnifier' | 'lantern' | 'net' | 'magnet' | 'compass' | 'pencil' | 'wrench' | 'hammer' | 'mallet' | 'crank' | 'tea' | 'rocket' | 'telescope' | 'parcel' | 'pillow'
 export type Performance = { prop: Prop; description: string; kind: WorkKind }
+
+// A tool owns its choreography. Time may advance its working beats, but only
+// the real tool result can move it into a closing beat.
+export type ActionSequence = { kind: WorkKind; variant: number; at: number; endedAt?: number; failed?: boolean }
+export const ACTION_END_MS = 2200
+export type DuetKind = 'welcome' | 'message' | 'trouble' | 'finished'
+export const DUET_MS = 4400
+export const duetBeat = (kind: DuetKind, role: 'send' | 'recv', p: Personality, at: number, now: number) => {
+  const age = now - at
+  if (age >= DUET_MS) return null
+  const stage = age < 900 ? 0 : age < 2100 ? 1 : age < 3400 ? 2 : 3
+  const title = { welcome: 'welcoming a teammate', message: 'message handoff', trouble: 'a tool needs attention', finished: 'a task has finished' }[kind]
+  const gestures: Record<Personality['id'], [string, string]> = {
+    meticulous: ['passes a neatly folded note', 'aligns the edges of the note'],
+    curious: ['opens a box of clues', 'checks both sides of the note'],
+    dramatic: ['unfurls the note with a flourish', 'raises the note like a trophy'],
+    sleepy: ['offers the note with a yawn', 'wakes up to catch the note'],
+    shy: ['slides the note over gently', 'accepts the note with a small nod'],
+  }
+  const welcome = role === 'send' ? 'offers the workshop kit' : ({ meticulous: 'sorts the workshop kit', curious: 'looks inside every compartment', dramatic: 'presents the new toolkit proudly', sleepy: 'checks the kit for a cushion', shy: 'opens the kit a little at a time' }[p.id])
+  const trouble = role === 'send' ? ({ meticulous: 'lays out the troublesome parts', curious: 'peers into the stalled mechanism', dramatic: 'ducks behind the workbench', sleepy: 'blinks at the stalled mechanism', shy: 'points out the troublesome part' }[p.id])
+    : ({ meticulous: 'compares the parts with a drawing', curious: 'inspects the loose part', dramatic: 'holds up a warning flag', sleepy: 'brings a calming cup', shy: 'offers a spare wrench' }[p.id])
+  const finished = role === 'send' ? 'sets the finished task on the table' : ({ meticulous: 'stamps the task card', curious: 'examines the finished piece', dramatic: 'gives a theatrical salute', sleepy: 'raises a sleepy toast', shy: 'offers a quiet high five' }[p.id])
+  const gesture = kind === 'message' ? gestures[p.id][role === 'send' ? 0 : 1] : kind === 'welcome' ? welcome : kind === 'trouble' ? trouble : finished
+  return { stage, title, gesture: stage === 0 ? 'approaches the teammate' : stage === 3 ? 'returns to the work station' : gesture }
+}
+
+export const duetSvg = (kind: DuetKind, role: 'send' | 'recv', p: Personality, at: number, now: number, ground: number, toward: number, mode: Behavior, liveliness: Liveliness) => {
+  const beat = duetBeat(kind, role, p, at, now)
+  if (!beat) return ''
+  const active = beat.stage === 1 || beat.stage === 2
+  const prop: Prop = kind === 'welcome' ? role === 'send' ? 'parcel' : 'wrench'
+    : kind === 'trouble' ? role === 'send' ? 'crank' : p.id === 'sleepy' ? 'tea' : p.id === 'curious' ? 'magnifier' : 'wrench'
+    : kind === 'finished' ? role === 'send' ? 'notebook' : p.id === 'sleepy' ? 'tea' : 'pencil'
+    : role === 'send' && p.id === 'curious' ? 'parcel'
+    : role === 'recv' && beat.stage === 1 && p.id === 'curious' ? 'magnifier' : mode === 'adventure' ? 'map' : 'scroll'
+  // The note changes hands at the reaction beat; there is no random choice or
+  // message text in the artwork. Personality supplies the receiving gesture.
+  const holds = kind !== 'message' || role === 'send' && beat.stage <= 1 || role === 'recv' && beat.stage >= 2 || role === 'recv' && beat.stage === 1 && p.id === 'curious'
+  const object = holds ? propSvg({ kind: 'dispatch', prop, description: beat.gesture }, ground, '#c7b98e', now, mode, liveliness) : ''
+  const hand = active ? `<path d="M0 ${ground - 18}h${toward * 23}" stroke="#c7b98e" stroke-width="5"/>` : ''
+  const mark = active && beat.stage === 2 ? p.id === 'dramatic' ? `<path d="M0 ${ground - 68}l3 7 7 3-7 3-3 7-3-7-7-3 7-3z" fill="#e2bf71"/>`
+    : p.id === 'sleepy' ? `<path d="M-4 ${ground - 59}h8l-8 8h8" fill="none" stroke="#b8c7d0" stroke-width="2"/>`
+    : `<path d="M-4 ${ground - 56}l3 3 6-7" fill="none" stroke="#a5bea4" stroke-width="2"/>` : ''
+  const extension = active ? toward * 9 : 0
+  const lift = !active ? 0 : p.id === 'dramatic' && beat.stage === 2 ? -24 : p.id === 'shy' ? 7 : p.id === 'sleepy' ? 4 : p.id === 'curious' ? -8 : 0
+  const tilt = !active ? 0 : p.id === 'dramatic' ? toward * -8 : p.id === 'sleepy' ? toward * 12 : p.id === 'shy' ? toward * -4 : toward * 3
+  return `<g><title>Together: ${beat.title}; ${p.title} ${beat.gesture}</title><g class="actor-motion" transform="rotate(${tilt} 0 ${ground})">${hand}<g transform="translate(${extension} ${lift}) scale(${toward} 1)">${object}</g></g>${mark}</g>`
+}
+const ACTIONS: Partial<Record<WorkKind, [string, string, string, string]>> = {
+  read: ['selecting a reference', 'studying the pages', 'noting the reference', 'returning the reference'],
+  search: ['unfolding the search map', 'tracing possible clues', 'marking the search area', 'folding the search map'],
+  craft: ['laying out the tools', 'fitting a small part', 'refining the piece', 'putting the tools away'],
+  run: ['priming the mechanism', 'watching the gauges', 'tending the mechanism', 'winding down the mechanism'],
+  scout: ['extending the telescope', 'surveying the horizon', 'sketching the route', 'stowing the scouting gear'],
+}
+const MANNER: Record<Personality['id'], [string, string]> = {
+  meticulous: ['measures the spacing', 'aligns the tools'], curious: ['checks underneath', 'takes one last peek'],
+  dramatic: ['strikes a grand pose', 'takes a tiny bow'], sleepy: ['rubs sleepy eyes', 'stifles a yawn'],
+  shy: ['peeks around the edge', 'gives a small nod'],
+}
+const RETURNS: Partial<Record<WorkKind, [string, string]>> = {
+  read: ['reviewing the returned reference', 'filing the reading notes'],
+  search: ['reviewing the returned clues', 'sorting the search markers'],
+  craft: ['reviewing the returned edit', 'setting the edited piece down'],
+  run: ['reviewing the returned command', 'checking the stopped mechanism'],
+  scout: ['reviewing the returned lookup', 'folding the route sketch'],
+}
+export const actionBeat = (s: ActionSequence | null | undefined, p: Personality, now: number) => {
+  if (!s || !ACTIONS[s.kind]) return null
+  const closed = s.endedAt !== undefined
+  if (closed && now - s.endedAt! >= ACTION_END_MS) return null
+  const fast = closed && !s.failed && s.endedAt! - s.at < 800
+  const closingAge = closed ? now - s.endedAt! : 0
+  const stage = closed ? fast && closingAge < 600 ? 1 : fast && closingAge < 1300 ? 2 : 3 : now - s.at < 800 ? 0 : now - s.at < 2200 ? 1 : 2
+  const label = closed && s.failed ? 'setting the troublesome tool aside'
+    : fast && stage < 3 ? RETURNS[s.kind]![stage - 1]! : ACTIONS[s.kind]![stage]!
+  return { stage, label, manner: MANNER[p.id][stage === 0 ? 0 : 1], failed: !!s.failed }
+}
+
+export const actionSvg = (s: ActionSequence, p: Personality, ground: number, hand: string, now: number, mode: Behavior, liveliness: Liveliness) => {
+  const beat = actionBeat(s, p, now)
+  if (!beat) return ''
+  const performance = performanceFor(s.kind, mode, p, s.variant)
+  // Preparation reaches out, focus brings the object to eye level, sustained
+  // work leaves room for a notebook, and the result puts the object down.
+  const prop = beat.stage === 2 && s.kind === 'read' ? { ...performance, prop: 'notebook' as const }
+    : beat.stage === 2 && s.kind === 'scout' ? { ...performance, prop: 'map' as const } : performance
+  const offset = beat.stage === 0 ? [-9, -5] : beat.stage === 1 ? [-4, -12] : beat.stage === 3 ? [-8, 1] : [0, 0]
+  const amplitude = liveliness === 'quiet' ? 0 : mode === 'chaotic' ? 7 : 3
+  let detail = ''
+  if (s.kind === 'craft' && beat.stage === 2) detail = r(21, ground - 4, 15, 4, '#aac1b3') + r(25, ground - 7, 5, 3, '#d4bd7f')
+  if (s.kind === 'search' && beat.stage >= 1 && beat.stage < 3) detail = `<path d="M32 ${ground - 17}l3 3 5-7" fill="none" stroke="#d4bd7f" stroke-width="2"/>`
+  if (s.kind === 'run' && beat.stage >= 1 && beat.stage < 3) detail = `<path d="M30 ${ground - 29}v-8h9v8" fill="none" stroke="#91b3a0" stroke-width="2"/>` + r(33, ground - 35, 3, 4, '#dfbd73')
+  if (beat.failed) detail = `<path d="M23 ${ground - 32}l4 4m-4 0 4-4" stroke="#ce806a" stroke-width="2"/>`
+  const closeAge = s.endedAt === undefined ? 0 : Math.max(0, now - s.endedAt) / 1000
+  const motion = beat.stage === 3 ? liveliness === 'quiet' ? '' : `<animateTransform attributeName="transform" type="translate" values="0 -9;0 5;0 5" keyTimes="0;.6;1" dur="2.2s" begin="-${closeAge.toFixed(2)}s" fill="freeze"/>`
+    : amplitude ? `<animateTransform attributeName="transform" type="translate" values="0 0;${amplitude} -2;0 0" dur="${p.period}s" repeatCount="indefinite"/>` : ''
+  return `<g><title>Action: ${beat.label}; ${p.title} ${beat.manner}</title><g transform="translate(${offset[0]} ${offset[1]})"><g class="actor-motion">${motion}${propSvg(prop, ground, hand, now, mode, liveliness, beat.stage !== 3)}</g></g>${detail}</g>`
+}
+
+export const actionPose = (body: string, s: ActionSequence | null | undefined, p: Personality, ground: number, now: number, liveliness: Liveliness) => {
+  const beat = actionBeat(s, p, now)
+  if (!beat || liveliness === 'quiet') return body
+  const lean = { meticulous: 2, curious: 11, dramatic: -9, sleepy: 15, shy: -6 }[p.id]
+  const angle = beat.stage === 0 ? -lean / 2 : beat.stage === 1 ? lean : beat.stage === 3 ? 0 : lean / 3
+  return `<g class="actor-motion" transform="rotate(${angle} 0 ${ground})">${body}</g>`
+}
 export const flourishInterval = (liveliness: Liveliness) => ({ quiet: 30000, normal: 16000, lively: 8000 })[liveliness]
 export const FLOURISH_MS = 2200
-export const MOTION_CSS = '@media(prefers-reduced-motion:reduce){.actor-motion{transform:none!important}}'
+export const MOTION_CSS = '@media(prefers-reduced-motion:reduce){.actor-motion{transform:none!important}.duet-motion{transform:translate(var(--duet-x),0)!important}}'
 
 export type SceneCue = { kind: 'command' | 'config' | 'compact' | 'incoming' | 'permission' | 'tool-error' | 'tool-result'; at: number; performance?: Performance }
 export const CUE_MS = 3200
@@ -96,7 +204,7 @@ export const performanceFor = (kind: WorkKind, mode: Behavior, personality: Pers
   return { prop, description: PROPS[prop], kind }
 }
 
-export const propSvg = (p: Performance, ground: number, hand: string, now: number, mode: Behavior, liveliness: Liveliness) => {
+export const propSvg = (p: Performance, ground: number, hand: string, now: number, mode: Behavior, liveliness: Liveliness, animated = true) => {
   let art = ''
   const book = r(0, 1, 22, 16, '#916755') + r(2, 0, 8, 14, '#f3dfb0') + r(12, 0, 8, 14, '#e6cb98') + r(10, 1, 2, 15, '#ba9569') + r(4, 4, 4, 1, '#a28b64') + r(14, 4, 4, 1, '#a28b64')
   if (p.prop === 'book' || p.prop === 'upside-book') art = `<g transform="rotate(${p.prop === 'upside-book' ? 180 : -6} 11 8)">${book}</g>`
@@ -112,7 +220,7 @@ export const propSvg = (p: Performance, ground: number, hand: string, now: numbe
   if (p.prop === 'pencil') art = `<path d="M0 20L20-4" stroke="#e3b85f" stroke-width="4"/>` + r(19, -5, 4, 4, '#bd7564') + r(-2, 18, 3, 3, '#3e5054') + r(4, 19, 18, 2, '#e7d9b5')
   if (p.prop === 'wrench') art = `<path d="M2 21L16 2M11-4v8l5 4 6-5v-7" fill="none" stroke="#a5b7b1" stroke-width="5"/>`
   if (p.prop === 'hammer' || p.prop === 'mallet') art = r(6, 0, 4, 22, '#aa7950') + r(p.prop === 'mallet' ? -10 : -3, -5, p.prop === 'mallet' ? 36 : 22, 10, '#95a7a2') + r(p.prop === 'mallet' ? -10 : -3, -5, 4, 10, '#c0cdc0')
-  if (p.prop === 'crank') art = `<circle cx="11" cy="9" r="10" fill="#607d7b" stroke="#b5c1a8" stroke-width="3"/><g class="actor-motion"><animateTransform attributeName="transform" type="rotate" from="0 11 9" to="360 11 9" dur="3s" begin="-${((now / 1000) % 3).toFixed(2)}s" repeatCount="indefinite"/>${r(9, -1, 4, 12, '#d2b77a')}${r(8, -3, 6, 5, '#b66e59')}</g>`
+  if (p.prop === 'crank') art = `<circle cx="11" cy="9" r="10" fill="#607d7b" stroke="#b5c1a8" stroke-width="3"/><g class="actor-motion">${animated && liveliness !== 'quiet' ? `<animateTransform attributeName="transform" type="rotate" from="0 11 9" to="360 11 9" dur="3s" begin="-${((now / 1000) % 3).toFixed(2)}s" repeatCount="indefinite"/>` : ''}${r(9, -1, 4, 12, '#d2b77a')}${r(8, -3, 6, 5, '#b66e59')}</g>`
   if (p.prop === 'tea') art = r(0, 6, 17, 13, '#d3b998') + r(2, 7, 13, 3, '#785941') + `<path d="M17 8h5v8h-5" fill="none" stroke="#d3b998" stroke-width="3"/><path d="M5 2q-4-4 0-8m7 8q-4-4 0-8" fill="none" stroke="#c7c9ba" stroke-width="2"/>`
   if (p.prop === 'rocket') art = `<path d="M5 15V2l5-9 5 9v13l-5-3z" fill="#c6d4c5"/><path d="M5 7l-5 10h5m10-10 5 10h-5" fill="#b56556"/>` + r(8, 0, 4, 5, '#648f9a') + r(8, 15, 4, 7, '#e8b963')
   if (p.prop === 'telescope') art = `<g transform="rotate(-22 3 15)">${r(-1, 2, 25, 11, '#ba9b62')}${r(21, -1, 7, 17, '#89a6a3')}${r(-4, 4, 5, 7, '#6e8c8d')}</g>` + r(8, 14, 3, 9, '#725943')
@@ -122,7 +230,7 @@ export const propSvg = (p: Performance, ground: number, hand: string, now: numbe
   const angle = (p.kind === 'craft' ? 15 : p.kind === 'search' ? 7 : 3) * power * (mode === 'chaotic' ? 1.6 : 1)
   const dur = p.kind === 'craft' ? 0.9 : p.kind === 'search' ? 2.2 : 3.6
   const phase = ((now / 1000) % dur).toFixed(2)
-  return `<g transform="translate(15 ${ground - 23})"><title>${p.description}</title><g class="actor-motion"><animateTransform attributeName="transform" type="rotate" values="-${angle} 0 20;${angle} 0 20;-${angle} 0 20" dur="${dur}s" begin="-${phase}s" repeatCount="indefinite"/>${art}${r(-4, 12, 7, 5, hand)}</g></g>`
+  return `<g transform="translate(15 ${ground - 23})"><title>${p.description}</title><g class="actor-motion">${animated && liveliness !== 'quiet' ? `<animateTransform attributeName="transform" type="rotate" values="-${angle} 0 20;${angle} 0 20;-${angle} 0 20" dur="${dur}s" begin="-${phase}s" repeatCount="indefinite"/>` : ''}${art}${r(-4, 12, 7, 5, hand)}</g></g>`
 }
 
 export const personalitySvg = (p: Personality, body: string, ground: number, now: number, behavior: Behavior, liveliness: Liveliness) => {

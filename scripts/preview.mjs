@@ -13,27 +13,51 @@ if (boundary < 0) throw new Error('Cannot find the hooks/renderer boundary')
 const prefix = stripTypeScriptTypes(source.slice(0, boundary), { mode: 'strip' })
   .replaceAll("'./theater.ts'", JSON.stringify(pathToFileURL(resolve(root, 'hooks/theater.ts')).href))
 const fixture = `
-export function preview(width, behavior, look, filled, mixed = false) {
+export function preview(width, behavior, look, filled, mixed = false, beatAge = null, duetKind = null, duetAge = 1500, quiet = false) {
   W = width; H = 156; GY = 142; THEME = 'workshop'; SKY = filled;
-  BEHAVIOR = behavior; LIVELINESS = 'normal'; LOOK = look;
+  BEHAVIOR = behavior; LIVELINESS = quiet ? 'quiet' : 'normal'; LOOK = look;
   const now = 120000;
   const cast = ['read', 'search', 'craft', 'run', 'plan'].map((kind, i) => {
     const a = { id: i ? 'worker-' + i : 'main', name: ['Pip', 'Mochi', 'Ember', 'Nox', 'Fern'][i],
       skin: mixed ? SKIN_IDS[i % SKIN_IDS.length] : 'robot', personality: PERSONALITIES[i],
       color: COLORS[i], isWorking: i < 4, waiting: false, permissionTokens: new Set(), cue: null,
       workKind: kind, phase: 'tool', actionSequence: 0, tool: ['Read','Grep','Edit','Bash',''][i],
+      choreography: beatAge === null ? null : { kind, variant: 0, at: now - (beatAge < 0 ? 6000 : beatAge), ...(beatAge < 0 ? { endedAt: now + beatAge } : {}) },
       action: '', thought: '', mood: '', talk: null, spawnAt: 0, leaveAt: 0,
       restX: i < 4 ? workStation(kind, W, i + 1).x : workStation('rest', W, i + 1).x, seed: i + 1,
       epoch: 1, pathStart: now - 12000, segs: [], total: 0, flourishAt: i === 4 ? now - 400 : null };
     makePath(a);
     return a;
   });
-  return sceneSvg(cast, now);
+  if (duetKind) {
+    for (let i = 0; i < 2; i++) {
+      const a = cast[i];
+      a.tool = ''; a.phase = 'thinking'; a.workKind = 'think';
+      if (duetKind === 'finished' || duetKind === 'trouble' && i === 1) a.isWorking = false;
+      if (duetKind === 'finished' && i === 0) a.mood = 'happy';
+      a.talk = { at: now - duetAge, x0: width * (i ? .68 : .32), stand: width / 2 + (i ? 32 : -32), toward: i ? -1 : 1, role: i ? 'recv' : 'send', peer: cast[1 - i].id, kind: duetKind };
+      a.flourishAt = null;
+    }
+  }
+  return sceneSvg(duetKind ? cast.slice(0, 2) : cast, now);
 }
 `
 const { preview } = await import(`data:text/javascript;base64,${Buffer.from(prefix + fixture).toString('base64')}`)
 const out = resolve(root, 'docs/previews')
 await mkdir(out, { recursive: true })
+const storyPanels = [
+  ['Getting the tools', preview(751, 'cozy', 'dark', true, true, 300)],
+  ['Focusing on the object', preview(751, 'cozy', 'dark', true, true, 1500)],
+  ['Sustained work', preview(751, 'chaotic', 'dark', true, true, 3500)],
+  ['After the tool returns', preview(751, 'adventure', 'dark', true, true, -1500)],
+  ['Welcome kit', preview(751, 'cozy', 'dark', true, true, null, 'welcome')],
+  ['Message handoff', preview(751, 'adventure', 'dark', true, true, null, 'message')],
+  ['Tool trouble', preview(751, 'chaotic', 'dark', true, true, null, 'trouble', 2600)],
+  ['A finished task', preview(751, 'cozy', 'dark', true, true, null, 'finished', 2600)],
+  ['Narrow, light, quiet handoff', preview(360, 'cozy', 'light', false, true, null, 'message', 2600, true)],
+]
+const storyHtml = `<!doctype html><meta charset="utf-8"><title>Agent choreography</title><style>body{margin:24px;background:#22272d;color:#d9dbc9;font:14px system-ui}section{max-width:751px;margin:24px auto}h2{font-size:16px}svg{max-width:100%;height:auto}section:last-child{background:#f0eee5;color:#4b554f;padding:16px}</style>${storyPanels.map(([title, svg]) => `<section><h2>${title}</h2>${svg}</section>`).join('')}`
+await writeFile(resolve(out, 'choreography.html'), storyHtml)
 const panels = []
 for (const behavior of ['cozy', 'chaotic', 'adventure']) {
   const svg = preview(751, behavior, 'dark', true, true)
@@ -52,6 +76,9 @@ if (process.argv.includes('--png')) {
   const runtime = process.env.CODEX_WORKSPACE_NODE_MODULES
   if (!runtime) throw new Error('Set CODEX_WORKSPACE_NODE_MODULES to the bundled Node packages directory')
   const sharp = createRequire(resolve(runtime, '../package.json'))('sharp')
+  const panels = await Promise.all(storyPanels.map(async ([, svg], i) => ({ input: await sharp(Buffer.from(svg)).flatten({ background: i === storyPanels.length - 1 ? '#f0eee5' : '#22272d' }).png().toBuffer(), left: 0, top: i * 172 })))
+  await sharp({ create: { width: 751, height: storyPanels.length * 172, channels: 4, background: '#22272d' } }).composite(panels).png().toFile(resolve(out, 'choreography.png'))
+  await sharp(Buffer.from(storyPanels[5][1])).png().toFile(resolve(out, 'handoff.png'))
   for (const behavior of ['cozy', 'chaotic', 'adventure']) {
     await sharp(Buffer.from(preview(751, behavior, 'dark', true, true))).resize(1502, 312).png().toFile(resolve(out, `${behavior}.png`))
   }

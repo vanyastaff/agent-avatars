@@ -1,11 +1,11 @@
 import type { Register } from 'claude-code'
-import { PERSONALITIES, personalitySvg, workshopSvg, kindForTool, performanceFor, propSvg, workStation, flourishInterval, flourishSvg, FLOURISH_MS, MOTION_CSS, CUE_MS, cueLabel, cueSvg } from './theater.ts'
-import type { Personality, Behavior, Liveliness, WorkKind, SceneCue } from './theater.ts'
+import { PERSONALITIES, personalitySvg, workshopSvg, kindForTool, performanceFor, propSvg, workStation, flourishInterval, flourishSvg, FLOURISH_MS, MOTION_CSS, CUE_MS, cueLabel, cueSvg, actionBeat, actionSvg, actionPose, duetBeat, duetSvg, DUET_MS } from './theater.ts'
+import type { Personality, Behavior, Liveliness, WorkKind, SceneCue, ActionSequence, DuetKind } from './theater.ts'
 
 type AgentRow = { id: string; description: string; type: string; status: string }
 
 type Seg = { t0: number; t1: number; from: number; to: number }
-type ToolActivity = { tool: string; action: string; kind: WorkKind; sequence: number }
+type ToolActivity = { tool: string; action: string; kind: WorkKind; sequence: number; choreography: ActionSequence }
 
 type Avatar = {
   id: string
@@ -24,6 +24,8 @@ type Avatar = {
   toolSerial: number
   permissionTokens: Set<number>
   cue: SceneCue | null
+  choreography: ActionSequence | null
+  beatLabel: string
   isWorking: boolean
   tool: string
   doneAt: number
@@ -32,7 +34,7 @@ type Avatar = {
   waiting: boolean // blocked on you or on something it started
   askingAt: number // the main agent: when a question dialog was last drawn
   handle: string // the name its Agent call gave it, which SendMessage addresses
-  talk: { at: number; x0: number; stand: number; role: 'send' | 'recv'; seed: number } | null // a meeting with another agent
+  talk: { at: number; x0: number; stand: number; role: 'send' | 'recv'; peer: string; kind: DuetKind; toward: number } | null
   desc: string
   action: string
   recent: string[]
@@ -51,7 +53,7 @@ type Avatar = {
   total: number
 }
 
-const VERSION = '0.6.0'
+const VERSION = '0.7.0'
 const COLORS = ['#ff8a1f', '#37c871', '#b45cff', '#2fa8ff', '#ffd23f', '#ff5c7a', '#e6e6e6']
 const LINGER_MS = 15000
 const MOOD_MS = 5000
@@ -87,7 +89,7 @@ const makePath = (a: Avatar) => {
   if (!a.routeLoop) {
     const destination = workStation(a.workKind, W, a.seed).x
     const pace = a.personality.pace * (BEHAVIOR === 'chaotic' ? 1.3 : BEHAVIOR === 'adventure' ? 1.1 : 0.9)
-    const duration = Math.max(0.8, Math.abs(destination - a.restX) / (SPEED * pace))
+    const duration = Math.min(2.2, Math.max(0.8, Math.abs(destination - a.restX) / (SPEED * pace)))
     a.segs = [{ t0: 0, t1: duration, from: a.restX, to: destination }]
     a.total = duration
     return
@@ -169,7 +171,7 @@ const activity = (tool: string) => {
 type Party = { at: number }
 let PARTY: Party | null = null
 let EVENTS = true
-const TALK_MS = 3600
+const TALK_MS = DUET_MS
 const PARTY_MS = 4500
 
 // Sounds are opt-in (option `sound`). The engine plays them through afplay, so only on macOS.
@@ -486,16 +488,20 @@ const withEffects = (a: Avatar, body: string, now: number) => {
 
 const agentSvg = (a: Avatar, now: number, compact = false) => {
   const arrived = a.isWorking && !a.routeLoop && now - a.pathStart >= a.total * 1000
-  const moving = a.isWorking && !arrived
   const performance = performanceFor(a.waiting || a.permissionTokens.size ? 'wait' : a.isWorking ? a.workKind : 'rest', BEHAVIOR, a.personality, a.actionSequence)
   const meeting = a.talk !== null && now - a.talk.at < TALK_MS
+  const duetStage = meeting ? duetBeat(a.talk!.kind, a.talk!.role, a.personality, a.talk!.at, now)?.stage : undefined
+  const moving = meeting ? duetStage === 0 || duetStage === 3 : a.isWorking && !arrived
+  const beat = !a.waiting && !a.permissionTokens.size && !meeting && actionBeat(a.choreography, a.personality, now)
+  const body = `<g transform="translate(${-7 * U} ${GY - 10 * U})">${robotBody(SKINS[a.skin] ?? SKINS['robot']!, a.color, a.isWorking, a.mood, moving)}</g>`
   const inner = `<title>${esc(a.name)} — ${a.personality.title}: ${a.isWorking ? esc(bubbleText(a)) : esc(moodLabel(a) || 'idle')}</title><rect x="${-7 * U}" y="${GY}" width="${14 * U}" height="${U}" fill="#888" opacity="0.4" shape-rendering="crispEdges"/>
 ${arrived ? `<title>at the ${workStation(a.workKind, W, a.seed).title}</title>` : ''}
-${personalitySvg(a.personality, `<g transform="translate(${-7 * U} ${GY - 10 * U})">${robotBody(SKINS[a.skin] ?? SKINS['robot']!, a.color, a.isWorking, a.mood, moving)}</g>${propSvg(performance, GY, a.skin === 'anime' ? '#ffd9b8' : a.color, now, BEHAVIOR, LIVELINESS)}`, GY, now, BEHAVIOR, LIVELINESS)}
+${personalitySvg(a.personality, (beat ? actionPose(body, a.choreography, a.personality, GY, now, LIVELINESS) : body) + (meeting ? '' : beat ? actionSvg(a.choreography!, a.personality, GY, a.skin === 'anime' ? '#ffd9b8' : a.color, now, BEHAVIOR, LIVELINESS) : propSvg(performance, GY, a.skin === 'anime' ? '#ffd9b8' : a.color, now, BEHAVIOR, LIVELINESS)), GY, now, BEHAVIOR, LIVELINESS)}
 ${flourishSvg(a.personality, GY, a.flourishAt, now, BEHAVIOR, LIVELINESS)}
-${cueSvg(a.cue, GY, now, LIVELINESS)}
-${meeting ? `<g><animate attributeName="opacity" values="1;0;1" keyTimes="0;0.22;0.78" calcMode="discrete" dur="${TALK_MS / 1000}s" begin="-${(Math.max(0, now - (a.talk?.at ?? now)) / 1000).toFixed(2)}s" fill="freeze"/>${tagSvg(a, compact)}</g>${talkBubbles(a, now)}` : tagSvg(a, compact)}`
-  if (meeting) return `<g>${meetingMove(a, now)}${withEffects(a, inner, now)}</g>`
+${meeting ? '' : cueSvg(a.cue, GY, now, LIVELINESS)}
+${tagSvg(a, compact)}${meeting ? talkBubbles(a, now) : ''}`
+  if (meeting) return LIVELINESS === 'quiet' ? `<g transform="translate(${a.talk!.x0.toFixed(1)} 0)">${withEffects(a, inner, now)}</g>`
+    : `<g class="duet-motion" transform="translate(${xOf(a, now).toFixed(1)} 0)" style="--duet-x:${a.talk!.x0.toFixed(1)}px">${meetingMove(a, now)}${withEffects(a, inner, now)}</g>`
   if (!a.isWorking) return `<g transform="translate(${Math.round(a.restX)} 0)">${withEffects(a, inner, now)}</g>`
   if (arrived) return `<g transform="translate(${posAt(a, (now - a.pathStart) / 1000).toFixed(1)} 0)">${withEffects(a, inner, now)}</g>`
 
@@ -511,7 +517,17 @@ ${meeting ? `<g><animate attributeName="opacity" values="1;0;1" keyTimes="0;0.22
     times.push((s.t1 / a.total).toFixed(4))
   })
   const walk = `<animateTransform attributeName="transform" type="translate" values="${values.join(';')}" keyTimes="${times.join(';')}" dur="${a.total.toFixed(2)}s" begin="-${sec.toFixed(2)}s" ${a.routeLoop ? 'repeatCount="indefinite"' : 'fill="freeze"'}/>`
-  return `<g>${walk}${withEffects(a, inner, now)}</g>`
+  return `<g transform="translate(${posAt(a, (now - a.pathStart) / 1000).toFixed(1)} 0)">${walk}${withEffects(a, inner, now)}</g>`
+}
+
+const stageLabel = (a: Avatar, now: number) => {
+  if (a.waiting || a.permissionTokens.size) return ''
+  const t = a.talk
+  if (t) {
+    const beat = duetBeat(t.kind, t.role, a.personality, t.at, now)
+    if (beat) return `${beat.title}: ${beat.gesture}`
+  }
+  return actionBeat(a.choreography, a.personality, now)?.label ?? ''
 }
 
 // Scenery follows the chosen skin (a mixed party gets the plain meadow).
@@ -939,39 +955,23 @@ const sky = () => {
   return `<defs><linearGradient id="sky-${THEME}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${t.sky[0]}"/><stop offset="1" stop-color="${t.sky[1]}"/></linearGradient></defs><rect width="${W}" height="${H}" rx="8" fill="url(#sky-${THEME})"/>`
 }
 
-const xOf = (a: Avatar, now: number) => (a.isWorking ? posAt(a, (now - a.pathStart) / 1000) : a.restX)
-
-// Two agents that talk meet in the middle: they walk up to each other, type in turn
-// (blinking dots), both show a feeling (a heart, a "!" or a note), and walk back.
-const heart = ['.X.X.', 'XXXXX', 'XXXXX', '.XXX.', '..X..']
-const bang = ['.X.', '.X.', '.X.', '...', '.X.']
-const note = ['..XX.', '..X.X', '..X..', 'XXX..', 'XXX..']
-const EMOTES: Record<string, { rows: string[]; color: string }> = {
-  heart: { rows: heart, color: '#e03a4e' },
-  bang: { rows: bang, color: '#e08a1f' },
-  note: { rows: note, color: '#5a3fd0' },
+const xOf = (a: Avatar, now: number) => {
+  const normal = a.isWorking ? posAt(a, (now - a.pathStart) / 1000) : a.restX
+  if (!a.talk) return normal
+  if (LIVELINESS === 'quiet') return a.talk.x0
+  const { at, x0, stand } = a.talk
+  const fraction = Math.max(0, Math.min(1, (now - at) / TALK_MS))
+  if (fraction < 0.22) return x0 + (stand - x0) * fraction / 0.22
+  if (fraction < 0.78) return stand
+  const end = a.isWorking ? posAt(a, (at + TALK_MS - a.pathStart) / 1000) : a.restX
+  return stand + (end - stand) * (fraction - 0.78) / 0.22
 }
 
-// Show `inner` only while the meeting is between fractions f0 and f1 of its length.
-const during = (inner: string, f0: number, f1: number, age: number) =>
-  `<g opacity="0"><animate attributeName="opacity" values="0;1;0" keyTimes="0;${f0};${f1}" calcMode="discrete" dur="${TALK_MS / 1000}s" begin="-${age.toFixed(2)}s" fill="freeze"/>${inner}</g>`
-
+// Objects and receiving gestures replace the old time-seeded chat bubbles.
 const talkBubbles = (a: Avatar, now: number) => {
   const t = a.talk
   if (!t) return ''
-  const age = Math.max(0, now - t.at) / 1000
-  const top = GY - 10 * U - 20 - 4
-  const [w0, w1] = t.role === 'send' ? [0.25, 0.45] : [0.45, 0.65]
-  const dots = [-6, 0, 6].map((x, i) => `<rect x="${x - 1}" y="${top + 4}" width="3" height="3" fill="#222"><animate attributeName="opacity" values="0.2;1;0.2" dur="0.6s" begin="${(i * 0.15).toFixed(2)}s" repeatCount="indefinite"/></rect>`).join('')
-  const typing = `<g shape-rendering="crispEdges"><rect x="-11" y="${top}" width="22" height="11" fill="#fff" stroke="#222" stroke-width="1"/><rect x="-2" y="${top + 11}" width="4" height="3" fill="#fff"/>${dots}</g>`
-  const kinds = [['bang', 'heart'], ['note', 'note'], ['bang', 'bang'], ['heart', 'heart']][t.seed % 4] as string[]
-  const em = EMOTES[kinds[t.role === 'send' ? 0 : 1] as string] as { rows: string[]; color: string }
-  const px = 2
-  const glyph = em.rows
-    .map((row, y) => [...row].map((c, x) => (c === 'X' ? `<rect x="${-(row.length * px) / 2 + x * px}" y="${top + 2 + y * px}" width="${px}" height="${px}" fill="${em.color}"/>` : '')).join(''))
-    .join('')
-  const emote = `<g shape-rendering="crispEdges"><rect x="-9" y="${top - 2}" width="18" height="16" fill="#fff" stroke="#222" stroke-width="1"/><rect x="-2" y="${top + 14}" width="4" height="3" fill="#fff"/>${glyph}</g>`
-  return during(typing, w0, w1, age) + during(emote, 0.66, 0.78, age)
+  return duetSvg(t.kind, t.role, a.personality, t.at, now, GY, t.toward, BEHAVIOR, LIVELINESS)
 }
 
 // The sliding motion of an avatar that is in a meeting: out to the meeting point, hold, back.
@@ -1091,6 +1091,8 @@ export const register: Register = (on, options) => {
       toolSerial: 0,
       permissionTokens: new Set(),
       cue: null,
+      choreography: null,
+      beatLabel: '',
       isWorking: false,
       tool: '',
       doneAt: 0,
@@ -1106,6 +1108,39 @@ export const register: Register = (on, options) => {
   }
 
   const mainAv = make('main', 'main', COLORS[0] ?? '#ff8a1f')
+
+  // Both participants share the same lifetime. Cancel from their visible
+  // positions, so a real tool/approval can take over without a teleport.
+  const cancelDuet = (actor: Avatar, now: number) => {
+    const scene = actor.talk
+    if (!scene) return
+    for (const a of [actor, scene.peer === 'main' ? mainAv : agents.get(scene.peer)]) {
+      if (!a?.talk || a.talk.at !== scene.at) continue
+      const x = xOf(a, now)
+      a.talk = null
+      a.restX = x
+      if (a.isWorking) { a.pathStart = now; makePath(a) }
+    }
+  }
+  const canDuet = (a: Avatar) => !a.waiting && !a.permissionTokens.size && !a.leaveAt
+    && ![...a.activeTools.values()].some(t => t.kind !== 'dispatch')
+  const startDuet = (from: Avatar, to: Avatar, kind: DuetKind, now: number) => {
+    const cast = [mainAv, ...agents.values()]
+    for (const a of cast) if (a.talk && now - a.talk.at >= TALK_MS) cancelDuet(a, now)
+    if (from === to || !canDuet(from) || !canDuet(to) || cast.some(a => a.talk)) return false
+    const xf = xOf(from, now), xt = xOf(to, now)
+    const meet = Math.max(70, Math.min(W - 70, (xf + xt) / 2))
+    const direction = xf <= xt ? 1 : -1
+    from.talk = { at: now, x0: xf, stand: LIVELINESS === 'quiet' ? xf : meet - direction * 32, toward: direction, role: 'send', peer: to.id, kind }
+    to.talk = { at: now, x0: xt, stand: LIVELINESS === 'quiet' ? xt : meet + direction * 32, toward: -direction, role: 'recv', peer: from.id, kind }
+    from.flourishAt = to.flourishAt = null
+    return true
+  }
+  const inviteIdleTeammate = (actor: Avatar, kind: 'trouble' | 'finished', now: number) => {
+    const helper = [mainAv, ...agents.values()].find(a => a !== actor && !a.isWorking
+      && !a.cue && (!a.mood || a.mood === 'happy') && canDuet(a))
+    if (helper) startDuet(actor, helper, kind, now)
+  }
 
   // Agents the mod did not see start (spawned before it loaded, or before a reload
   // wiped its memory) are picked up from the session's own list.
@@ -1135,6 +1170,7 @@ export const register: Register = (on, options) => {
         }
       } else if (isBlocked) {
         if (a.isWorking || !a.waiting || a.doneAt || a.leaveAt) {
+          cancelDuet(a, now)
           stopWork(a, now, true)
           a.waiting = true
           a.doneAt = 0
@@ -1150,14 +1186,20 @@ export const register: Register = (on, options) => {
         // A waiting avatar is already stopped. Completion must still start its
         // retirement timer, once, even if no turn.complete event reached us.
         if (a.isWorking || a.waiting || !a.doneAt) {
+          cancelDuet(a, now)
           stopWork(a, now)
+          a.choreography = null
+          a.activeTools.clear()
+          a.permissionTokens.clear()
           a.waiting = false
           a.doneAt = a.doneAt || now
           if (!a.mood) a.mood = info.status === 'failed' ? 'sad' : info.status === 'killed' ? 'stop' : 'happy'
           changed = true
         }
       } else if (!running && a.isWorking) {
+        cancelDuet(a, now)
         stopWork(a, now)
+        a.choreography = null
         changed = true
       } else if (a.waiting) {
         a.waiting = false
@@ -1213,6 +1255,9 @@ export const register: Register = (on, options) => {
         changed = true
       }
       for (const a of [mainAv, ...agents.values()]) {
+        const label = (actionBeat(a.choreography, a.personality, now)?.label ?? '')
+          + (a.talk ? duetBeat(a.talk.kind, a.talk.role, a.personality, a.talk.at, now)?.gesture ?? '' : '')
+        if (label !== a.beatLabel) { a.beatLabel = label; changed = true }
         if (a.cue && a.cue.kind !== 'permission' && now - a.cue.at >= CUE_MS) { a.cue = null; changed = true }
         if (a.flourishAt !== null && (now - a.flourishAt >= FLOURISH_MS || a.waiting || a.leaveAt || a.mood || a.talk)) {
           a.flourishAt = null
@@ -1222,8 +1267,8 @@ export const register: Register = (on, options) => {
           a.arrived = true
           changed = true
         }
-        if (a.talk && now - a.talk.at > TALK_MS) {
-          a.talk = null
+        if (a.talk && (now - a.talk.at >= TALK_MS || a.waiting || a.permissionTokens.size || a.leaveAt)) {
+          cancelDuet(a, now)
           changed = true
         }
       }
@@ -1235,6 +1280,7 @@ export const register: Register = (on, options) => {
       if (asking) changed = true // keeps the question dialog drawn, so it keeps refreshing the timer
       for (const [id, a] of agents) {
         if (!a.isWorking && a.doneAt && !a.leaveAt && now - a.doneAt > LINGER_MS) {
+          cancelDuet(a, now)
           a.leaveAt = now
           changed = true
         }
@@ -1245,7 +1291,7 @@ export const register: Register = (on, options) => {
       }
       const cast = [mainAv, ...agents.values()]
       if (now >= nextFlourishAt && !PARTY && !cast.some(a => a.talk || a.flourishAt !== null)) {
-        const ready = cast.filter(a => !a.waiting && !a.permissionTokens.size && !a.cue && !a.leaveAt && !a.mood && (a.id === 'main' || a.isWorking))
+        const ready = cast.filter(a => !a.waiting && !a.permissionTokens.size && !a.cue && !a.leaveAt && !a.mood && !actionBeat(a.choreography, a.personality, now) && (a.id === 'main' || a.isWorking))
         const actor = ready[flourishIx % Math.max(1, ready.length)]
         if (actor) {
           actor.flourishAt = now
@@ -1277,6 +1323,8 @@ export const register: Register = (on, options) => {
       }
       a.handle = e.name ?? ''
       agents.set(a.id, a)
+      const parent = e.parentAgentId ? agents.get(e.parentAgentId) : mainAv
+      if (parent) startDuet(parent, a, 'welcome', now)
       $.ui.invalidate('ui.render')
       void play($, 'spawn')
       if (NAMES === 'ai') {
@@ -1307,12 +1355,14 @@ export const register: Register = (on, options) => {
   on('turn.start', async ($, e, next) => {
     const now = await $.clock.now()
     const a = e.agentId ? agents.get(e.agentId) ?? adopt(e.agentId, 'agent', true, now) : mainAv
+    cancelDuet(a, now)
     a.activeTools.clear()
     a.permissionTokens.clear()
     a.waiting = false
     a.tool = ''
     a.thought = ''
     a.cue = null
+    a.choreography = null
     a.phase = 'planning'
     a.flourishAt = null
     setWorkKind(a, 'plan', now)
@@ -1365,6 +1415,7 @@ export const register: Register = (on, options) => {
     }
     let token = 0
     if (a) {
+      cancelDuet(a, now)
       a.flourishAt = null
       const kind = kindForTool(e.tool)
       const sequence = a.actionCounts[kind] ?? 0
@@ -1375,7 +1426,8 @@ export const register: Register = (on, options) => {
       a.tool = e.tool
       a.action = describeAction(e.tool, e as unknown as Record<string, unknown>)
       token = ++a.toolSerial
-      a.activeTools.set(token, { tool: a.tool, action: a.action, kind, sequence })
+      a.choreography = { kind, variant: sequence, at: now }
+      a.activeTools.set(token, { tool: a.tool, action: a.action, kind, sequence, choreography: a.choreography })
       a.recent = [...a.recent, a.action].slice(-5)
       startWork(a, now)
       $.ui.invalidate('ui.render')
@@ -1405,6 +1457,7 @@ export const register: Register = (on, options) => {
     }
     try {
       const result = await next(e)
+      if (a?.activeTools.has(token)) a.activeTools.get(token)!.choreography.failed = 'deny' in result || !!result.isError
       if (a && a.activeTools.has(token) && a.isWorking && ('deny' in result || result.isError)) {
         a.cue = { kind: 'tool-error', at: await $.clock.now() }
         a.flourishAt = null
@@ -1415,11 +1468,15 @@ export const register: Register = (on, options) => {
         a.cue = { kind: 'tool-result', at: await $.clock.now(), performance: performanceFor(finished.kind, BEHAVIOR, a.personality, finished.sequence) }
       }
       return result
+    } catch (error) {
+      if (a?.activeTools.has(token)) a.activeTools.get(token)!.choreography.failed = true
+      throw error
     } finally {
       if (a) {
         a.permissionTokens.delete(token)
         if (!a.permissionTokens.size && a.cue?.kind === 'permission') a.cue = null
       }
+      const finished = a?.activeTools.get(token)
       if (a && a.activeTools.delete(token) && a.isWorking) {
         const finishedAt = await $.clock.now()
         const pending = [...a.activeTools.values()].pop()
@@ -1428,6 +1485,9 @@ export const register: Register = (on, options) => {
         a.phase = pending ? 'tool' : 'thinking'
         setWorkKind(a, pending?.kind ?? 'think', finishedAt)
         if (pending) a.actionSequence = pending.sequence
+        if (finished) finished.choreography.endedAt = finishedAt
+        a.choreography = pending?.choreography ?? finished?.choreography ?? null
+        if (!pending && finished?.choreography.failed) inviteIdleTeammate(a, 'trouble', finishedAt)
         $.ui.invalidate('ui.render')
       }
     }
@@ -1437,13 +1497,16 @@ export const register: Register = (on, options) => {
     const a = e.agentId ? agents.get(e.agentId) : mainAv
     if (a) {
       const now = await $.clock.now()
+      cancelDuet(a, now)
       stopWork(a, now)
       a.activeTools.clear()
       a.permissionTokens.clear()
       a.cue = null
+      a.choreography = null
       a.waiting = false
       a.mood = e.reason === 'answer' ? 'happy' : e.reason === 'aborted' ? 'stop' : 'sad'
       a.moodAt = now
+      if (e.reason === 'answer' && !e.isAborted) inviteIdleTeammate(a, 'finished', now)
       $.ui.invalidate('ui.render')
       if (e.reason === 'answer') void play($, 'done')
       else if (e.reason !== 'aborted') void play($, 'error')
@@ -1457,6 +1520,7 @@ export const register: Register = (on, options) => {
     // Only an in-flight call is a real approval wait; permission queries are not.
     const token = a ? [...a.activeTools.entries()].reverse().find(([, call]) => call.tool === e.tool)?.[0] : undefined
     if (a && token !== undefined && result.decision === 'ask') {
+      cancelDuet(a, await $.clock.now())
       a.permissionTokens.add(token)
       a.cue = { kind: 'permission', at: await $.clock.now() }
       a.flourishAt = null
@@ -1466,7 +1530,9 @@ export const register: Register = (on, options) => {
   })
 
   on('command.run', async ($, e, next) => {
-    mainAv.cue = { kind: 'command', at: await $.clock.now() }
+    const now = await $.clock.now()
+    cancelDuet(mainAv, now)
+    mainAv.cue = { kind: 'command', at: now }
     mainAv.flourishAt = null
     $.ui.invalidate('ui.render')
     return next(e)
@@ -1498,21 +1564,15 @@ export const register: Register = (on, options) => {
 
   // Agents talking to each other: only who sends to whom is read, never the text.
   on('session.send', async ($, e, next) => {
+    const result = await next(e)
     const from = e.agentId ? agents.get(e.agentId) : mainAv
     const to = e.to === 'main' ? mainAv : [...agents.values()].find(a => a.id === e.to || (a.handle !== '' && a.handle === e.to))
-    if (from && to && from !== to) {
+    if (result.isDelivered && from && to && from !== to) {
       const now = await $.clock.now()
-      const xf = xOf(from, now)
-      const xt = xOf(to, now)
-      const meet = Math.max(60, Math.min(W - 60, (xf + xt) / 2))
-      const gap = 26
-      from.talk = { at: now, x0: xf, stand: xf <= xt ? meet - gap : meet + gap, role: 'send', seed: now % 997 }
-      to.talk = { at: now, x0: xt, stand: xf <= xt ? meet + gap : meet - gap, role: 'recv', seed: now % 997 }
-      from.flourishAt = null
-      to.flourishAt = null
+      startDuet(from, to, 'message', now)
       $.ui.invalidate('ui.render')
     }
-    return next(e)
+    return result
   })
 
   // What happens on GitHub reaches the session as an external event; only its kind
@@ -1550,6 +1610,7 @@ export const register: Register = (on, options) => {
   // The question dialog is drawn while it is open; the main avatar waits for you meanwhile.
   on('ui.render', { component: 'AskUserQuestion' }, async ($, e, next) => {
     const now = await $.clock.now()
+    cancelDuet(mainAv, now)
     const isFresh = now - mainAv.askingAt < ASK_TTL
     mainAv.askingAt = now
     if (!isFresh) {
@@ -1569,6 +1630,7 @@ export const register: Register = (on, options) => {
     // ~7.9 px per cell, measured from the desktop's band (752 px at ~95 cells)
     const w = Math.max(360, Math.min(1800, Math.round((e.props.bodyColumns ?? 95) * 7.9)))
     if (Math.abs(w - W) > 6) {
+      for (const a of [mainAv, ...agents.values()]) cancelDuet(a, now)
       W = w
       for (const a of [mainAv, ...agents.values()]) {
         a.restX = Math.min(a.isWorking ? posAt(a, (now - a.pathStart) / 1000) : a.restX, W - 40)
@@ -1589,7 +1651,7 @@ export const register: Register = (on, options) => {
       return (
         <Svg
           source={sceneSvg(all, now)}
-          alt={`Agents: ${all.map(a => `${a.name} (${a.personality.title}) ${a.isWorking ? bubbleText(a) : moodLabel(a) || 'idle'}: ${performanceFor(a.waiting || a.permissionTokens.size ? 'wait' : a.isWorking ? a.workKind : 'rest', BEHAVIOR, a.personality, a.actionSequence).description}${a.cue ? '; ' + cueLabel(a.cue) : ''}`).join(', ')}`}
+          alt={`Agents: ${all.map(a => `${a.name} (${a.personality.title}) ${a.isWorking ? bubbleText(a) : moodLabel(a) || 'idle'}: ${performanceFor(a.waiting || a.permissionTokens.size ? 'wait' : a.isWorking ? a.workKind : 'rest', BEHAVIOR, a.personality, a.actionSequence).description}${stageLabel(a, now) ? '; ' + stageLabel(a, now) : ''}${a.cue ? '; ' + cueLabel(a.cue) : ''}`).join(', ')}`}
           width={W}
           height={H}
           isInteractive
@@ -1621,6 +1683,7 @@ export const register: Register = (on, options) => {
               <Text bold>{pad(a.name)}</Text>
               <Text dimColor>{pad(a.personality.title)}</Text>
               <Text dimColor>{pad(a.isWorking ? bubbleText(a) : moodLabel(a) || 'idle')}</Text>
+              {stageLabel(a, now) ? <Text dimColor>{pad(stageLabel(a, now))}</Text> : null}
             </Box>
           )
         })}

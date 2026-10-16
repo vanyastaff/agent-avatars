@@ -125,9 +125,49 @@ The main character's mood clears after a few seconds; a subagent keeps it until 
 
 ### Agents talking to each other
 
-When an agent sends a message to another agent (SendMessage), the two walk up to each other, take turns "typing" (blinking dots), each shows a feeling (a heart, a `!` or a note), and they walk back to what they were doing. ![Two agents meeting](docs/talk.gif)
+Version 0.7.0 replaces the time-seeded chat emotes with short, event-driven
+duets. A delivered message becomes a handoff: Meticulous folds the note neatly,
+Curious checks both sides, Dramatic makes a presentation, Sleepy yawns, and Shy
+slides it over gently. An undelivered message never starts a handoff.
+
+![A personality-led message handoff](docs/previews/handoff.png)
+
+Successful spawns can receive a workshop kit from their actual parent. A tool
+error can bring an idle teammate over to inspect the troublesome part; a normally
+answered turn can get a shared finish. Helpers never leave an active tool or
+approval wait to perform. These scenes acknowledge real events: an inspection
+does not claim that the error was repaired, and a turn ending does not infer test
+or build success.
+
+Only one duet runs at a time. It approaches, exchanges an object, reacts, and
+returns to work within 4.4 seconds. Real tools, new turns, questions, approvals,
+retirement and resizing interrupt both participants together. Busy events are
+not queued for later. Quiet mode keeps actors at their existing positions;
+reduced-motion styling suppresses duet travel while retaining the scene's meaning.
 
 Only who writes to whom is read, never the text. The main agent is addressed as `main`, others by the name their Agent call gave them or by agent id.
+
+### Actions with a beginning and an ending
+
+| Real tool activity | Visual sequence |
+| --- | --- |
+| Read / NotebookRead | Select a reference, study the pages, take notes, return it |
+| Grep / Glob / ToolSearch | Unfold the search map, trace clues, mark the area, fold it |
+| Edit / Write / NotebookEdit | Lay out tools, fit a part, refine it, put tools away |
+| Bash / PowerShell / Monitor | Prime a mechanism, watch gauges, tend it, wind it down |
+| WebFetch / WebSearch | Extend a telescope, survey, sketch a route, stow the gear |
+
+Personality changes the posture and handling; behavior presets keep their own
+objects and motion. Workshop approaches take at most 2.2 seconds. A long tool
+holds its working beat until it actually returns. Fast tools receive a bounded
+2.2-second result sequence while their actual status is already thinking. A
+denied or failed call sets its tool aside rather than acting out a successful
+result. Parallel calls retain their own elapsed beats; late results from an old
+turn cannot restart an obsolete action. Current beats are also described in SVG
+alternative text and in the terminal. Autonomous flourishes yield to these actions.
+
+The [choreography gallery](docs/previews/choreography.html) and
+[static contact sheet](docs/previews/choreography.png) show stages and duets.
 
 ### Pull requests and CI
 
@@ -176,13 +216,17 @@ No Node.js packages, sign-in, or model requests are needed. Tests load the real
 hooks through `register`, stub host APIs, and advance a controlled host clock.
 They check agent retirement and resumption, main-agent activity, SVG text escaping,
 AI opt-in and throttling, and tool execution when the observer's host API fails.
+The 54-test suite also covers event-driven duets, all five personality roles,
+multi-stage/fast actions, busy recipients, delivery failures, parallel-call
+continuity, interruption, resize, approval waits and old-turn result isolation.
 Desktop and VS Code SVG output and terminal elements are checked through the
 [native test kit](https://code.claude.com/docs/en/plugins/mods/test); application
 painting and SMIL playback still need a real session.
 
 For a visual gallery generated from the production SVG functions, run
 `node scripts/preview.mjs` with Node 24. It writes `docs/previews/index.html` and
-the three behavior SVGs; open the HTML in a browser to inspect SMIL playback.
+the three behavior SVGs plus `docs/previews/choreography.html`; open the HTML in a
+browser to inspect SMIL playback.
 The bundled Sharp package can optionally generate PNGs with `--png` when
 `CODEX_WORKSPACE_NODE_MODULES` points to the bundled Node packages directory.
 

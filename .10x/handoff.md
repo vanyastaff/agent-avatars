@@ -1,12 +1,21 @@
 # Current handoff
 
+Event choreography complete locally as 0.7.0. See decisions/sde/event-choreography.md
+and reviews/event-choreography.md. 54 native tests pass, strict validation passes,
+production SVG contact sheets inspected. Duets use actual spawn/delivery/error/
+completion events; tools own their stage lifetimes and preserve parallel-call
+age. Live application playback remains unverified. No 0.7.0 publication or
+installed-copy update performed.
+
+# Handoff history
+
+## 0.6.0 publication
+
 0.6.0 published to origin/main in commit 63db4e6. Named marketplace refreshed;
 `claude plugin update agent-avatars@agent-avatars --scope user --json` upgraded
 the user installation from 0.5.0 to 0.6.0. Installed version and enabled status
 verified. CLI requires restart to apply. Deployment and rollback details:
 decisions/devops/agent-theater.md. Live animation remains unverified.
-
-# Handoff history
 
 ## Before publication
 

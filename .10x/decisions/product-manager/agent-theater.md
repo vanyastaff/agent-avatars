@@ -16,8 +16,9 @@ visual performance, never actual agent decisions, tools, or permissions.
 Delivered slice: workshop stations, tool-specific props and variants, five stable
 personalities, behavior/liveliness configuration, and turn/tool/command/config/
 compaction/message/permission reactions. Existing meeting animations remain.
-Recurring visual cast, new multi-character stories, audience interactions, room
-keepsakes and an expanded pane remain ideas outside the approved implementation.
+The user subsequently approved multi-character stories and multi-stage actions;
+these are delivered locally in 0.7.0. See ../sde/event-choreography.md. Recurring
+visual cast, audience interactions, room keepsakes and an expanded pane remain ideas.
 
 Success to validate: recognize characters from behavior with labels hidden;
 repeated actions visibly vary; scenes make sense without speech bubbles; ordinary
