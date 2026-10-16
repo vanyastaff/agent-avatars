@@ -1,7 +1,7 @@
 {
   "name": "agent-avatars",
-  "version": "0.5.0",
-  "description": "Pixel-art characters (robots, cats, dragons, anime) for the main agent and every subagent: they wander a little scene above the prompt while working, show what they are doing, and sleep when done.",
+  "version": "0.6.0",
+  "description": "A pixel-art crew for Claude Code: distinct personalities, tools and workshop stations that react to real session events. Choose cozy, chaotic or adventure behavior and how lively the scene feels.",
   "author": {
     "name": "vanyastaff"
   },
@@ -9,6 +9,20 @@
   "repository": "https://github.com/vanyastaff/agent-avatars",
   "license": "MIT",
   "userConfig": {
+    "behavior": {
+      "type": "string",
+      "title": "Behavior",
+      "description": "Cozy: gentle workshop habits. Chaotic: oversized tools and theatrical mishaps. Adventure: maps, lanterns and expedition gear. Changes the performance, never agent decisions.",
+      "default": "cozy",
+      "options": ["cozy", "chaotic", "adventure"]
+    },
+    "liveliness": {
+      "type": "string",
+      "title": "Liveliness",
+      "description": "Quiet: subtle movement and rare antics. Normal: occasional personality moments. Lively: expressive movement and more frequent antics. Independent of behavior.",
+      "default": "normal",
+      "options": ["quiet", "normal", "lively"]
+    },
     "skin": {
       "type": "string",
       "title": "Character",
@@ -26,9 +40,10 @@
       "type": "string",
       "title": "Scene",
       "description": "The world the characters live in. Auto follows the character.",
-      "default": "auto",
+      "default": "workshop",
       "options": [
         "auto",
+        "workshop",
         "meadow",
         "home",
         "lava",

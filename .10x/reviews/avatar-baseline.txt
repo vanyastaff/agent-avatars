@@ -1,0 +1,70 @@
+
+tests\activity.test.ts:
+(fail) the main agent shows the tool it is running [75.38ms]
+  AssertionError: expect(received).toBe()
+  
+  Expected: true
+  Received: false
+(fail) main-agent action bubbles show escaped input on desktop and VS Code [36.56ms]
+  AssertionError: expect(received).toBe()
+  
+  Expected: true
+  Received: false
+(fail) main-agent tool activity appears in the terminal too [33.24ms]
+  AssertionError: expect(received).toBeDefined()
+  
+  Expected: defined
+  Received: undefined
+(pass) default options never request model-generated labels [38.86ms]
+(fail) AI thoughts for the main agent are escaped and limited to one per twelve seconds [31.96ms]
+  AssertionError: expect(received).toBe()
+  
+  Expected: true
+  Received: false
+(pass) a host API failure in the observer does not block the underlying tool [26.50ms]
+(fail) the main agent clears its completion mood after five seconds on the host clock [34.27ms]
+  AssertionError: expect(received).toBe()
+  
+  Expected: false
+  Received: true
+
+tests\isolation.test.ts:
+(pass) a customized mod load uses its own scene and look [80.68ms]
+(pass) a fresh default load does not inherit another load's configuration [37.76ms]
+
+tests\lifecycle.test.ts:
+(fail) a waiting agent marked completed by the session list leaves the scene [72.70ms]
+  AssertionError: expect(received).toContain()
+  
+  Expected: containing "Worker [happy]"
+  Received: "agent-avatars 0.5.0, character robot, scene meadow\n\nOn the scene:\n  main  idle      robot: main\n  worker  idle      robot: Worker\n\nThe session's agents:\n  worker  completed general-purpose: Worker"
+(fail) a waiting agent marked failed by the session list leaves the scene [38.97ms]
+  AssertionError: expect(received).toContain()
+  
+  Expected: containing "Worker [sad]"
+  Received: "agent-avatars 0.5.0, character robot, scene meadow\n\nOn the scene:\n  main  idle      robot: main\n  worker  idle      robot: Worker\n\nThe session's agents:\n  worker  failed    general-purpose: Worker"
+(fail) a waiting agent marked killed by the session list leaves the scene [35.78ms]
+  AssertionError: expect(received).toContain()
+  
+  Expected: containing "Worker [stop]"
+  Received: "agent-avatars 0.5.0, character robot, scene meadow\n\nOn the scene:\n  main  idle      robot: main\n  worker  idle      robot: Worker\n\nThe session's agents:\n  worker  killed    general-purpose: Worker"
+(fail) a running agent also retires on the host clock after completion [53.07ms]
+  AssertionError: expect(received).not.toContain()
+  
+  Expected: not containing "Worker"
+  Received: "agent-avatars 0.5.0, character robot, scene meadow\n\nOn the scene:\n  main  idle      robot: main\n  worker  idle      robot: Worker [happy]\n\n"
+(pass) an agent that starts waiting after completion is not retired while blocked [58.39ms]
+(fail) a waiting agent that disappears from the session list also retires [46.55ms]
+  AssertionError: expect(received).not.toContain()
+  
+  Expected: not containing "Worker"
+  Received: "agent-avatars 0.5.0, character robot, scene meadow\n\nOn the scene:\n  main  idle      robot: main\n  worker  idle      robot: Worker [happy]\n\nThe session's agents:\n  (none)"
+(fail) resuming a retiring agent cancels its exit and old retirement deadline [44.24ms]
+  AssertionError: expect(received).toContain()
+  
+  Expected: containing "(leaving)"
+  Received: "agent-avatars 0.5.0, character robot, scene meadow\n\nOn the scene:\n  main  idle      robot: main\n  worker  idle      robot: Worker [happy]\n\nThe session's agents:\n  worker  completed general-purpose: Worker"
+
+ 5 pass
+ 11 fail
+Ran 16 tests across 3 files. [3.92s]

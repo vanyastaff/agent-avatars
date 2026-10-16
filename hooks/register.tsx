@@ -1,14 +1,29 @@
 import type { Register } from 'claude-code'
+import { PERSONALITIES, personalitySvg, workshopSvg, kindForTool, performanceFor, propSvg, workStation, flourishInterval, flourishSvg, FLOURISH_MS, MOTION_CSS, CUE_MS, cueLabel, cueSvg } from './theater.ts'
+import type { Personality, Behavior, Liveliness, WorkKind, SceneCue } from './theater.ts'
 
 type AgentRow = { id: string; description: string; type: string; status: string }
 
 type Seg = { t0: number; t1: number; from: number; to: number }
+type ToolActivity = { tool: string; action: string; kind: WorkKind; sequence: number }
 
 type Avatar = {
   id: string
   name: string
   color: string
   skin: string
+  personality: Personality
+  workKind: WorkKind
+  actionSequence: number
+  actionCounts: Partial<Record<WorkKind, number>>
+  routeLoop: boolean
+  arrived: boolean
+  flourishAt: number | null
+  phase: 'planning' | 'thinking' | 'replying' | 'tool'
+  activeTools: Map<number, ToolActivity>
+  toolSerial: number
+  permissionTokens: Set<number>
+  cue: SceneCue | null
   isWorking: boolean
   tool: string
   doneAt: number
@@ -36,7 +51,7 @@ type Avatar = {
   total: number
 }
 
-const VERSION = '0.5.0'
+const VERSION = '0.6.0'
 const COLORS = ['#ff8a1f', '#37c871', '#b45cff', '#2fa8ff', '#ffd23f', '#ff5c7a', '#e6e6e6']
 const LINGER_MS = 15000
 const MOOD_MS = 5000
@@ -49,8 +64,8 @@ const B = '█'
 
 // Scene geometry (SVG user units, drawn 1:1)
 let W = 760
-const H = 100
-const GY = 86
+let H = 100
+let GY = 86
 const PAUSE = 1.8
 const SPEED = 40
 
@@ -67,6 +82,16 @@ const rng = (seed: number) => {
 
 // A looping walk: stand still at a point (PAUSE s), walk to the next, and so on.
 const makePath = (a: Avatar) => {
+  a.arrived = false
+  a.routeLoop = THEME !== 'workshop'
+  if (!a.routeLoop) {
+    const destination = workStation(a.workKind, W, a.seed).x
+    const pace = a.personality.pace * (BEHAVIOR === 'chaotic' ? 1.3 : BEHAVIOR === 'adventure' ? 1.1 : 0.9)
+    const duration = Math.max(0.8, Math.abs(destination - a.restX) / (SPEED * pace))
+    a.segs = [{ t0: 0, t1: duration, from: a.restX, to: destination }]
+    a.total = duration
+    return
+  }
   const r = rng(a.seed * 7919 + a.epoch * 104729)
   const spots = THEMES[THEME]?.anchors?.() ?? []
   const next = () => (spots.length ? (spots[Math.floor(r() * spots.length)] as number) : 40 + r() * (W - 80))
@@ -85,17 +110,17 @@ const makePath = (a: Avatar) => {
 }
 
 const posAt = (a: Avatar, sec: number) => {
-  const t = a.total > 0 ? sec % a.total : 0
+  const t = a.total > 0 ? a.routeLoop ? sec % a.total : Math.max(0, Math.min(sec, a.total)) : 0
   for (const s of a.segs) {
     if (t >= s.t0 && t < s.t1) return s.t1 === s.t0 ? s.to : s.from + ((s.to - s.from) * (t - s.t0)) / (s.t1 - s.t0)
   }
-  return a.restX
+  return !a.routeLoop && a.segs.length ? a.segs[a.segs.length - 1]!.to : a.restX
 }
 
 const startWork = (a: Avatar, now: number) => {
   a.leaveAt = 0
-  a.waiting = false
   if (a.isWorking) return
+  a.waiting = a.permissionTokens.size > 0
   a.isWorking = true
   a.mood = ''
   a.doneAt = 0
@@ -105,12 +130,24 @@ const startWork = (a: Avatar, now: number) => {
 }
 
 const stopWork = (a: Avatar, now: number, isWaiting = false) => {
+  a.flourishAt = null
   if (!a.isWorking) return
   a.restX = posAt(a, (now - a.pathStart) / 1000)
   a.isWorking = false
   a.tool = ''
   a.thought = ''
   if (!isWaiting) a.doneAt = now
+}
+
+const setWorkKind = (a: Avatar, kind: WorkKind, now: number) => {
+  const reroute = a.isWorking && a.workKind !== kind && THEME === 'workshop'
+  if (reroute) a.restX = posAt(a, (now - a.pathStart) / 1000)
+  a.actionSequence = a.workKind === kind ? a.actionSequence : 0
+  a.workKind = kind
+  if (reroute) {
+    a.pathStart = now
+    makePath(a)
+  }
 }
 
 const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
@@ -146,10 +183,11 @@ const CLIPS: Record<string, string> = {
 }
 
 const play = async ($: any, name: 'spawn' | 'done' | 'error' | 'ask') => {
-  const now = Date.now()
-  if (!SOUND || now - lastPlay < 350) return
-  lastPlay = now
+  if (!SOUND) return
   try {
+    const now = await $.clock.now()
+    if (now - lastPlay < 350) return
+    lastPlay = now
     await $.audio.play({ asset: CLIPS[name] as string }, { gain: 0.6 })
   } catch {
     // no player on this system, or the clip would not play: stay quiet
@@ -166,6 +204,8 @@ const lookFromTheme = (theme: string) => (theme.startsWith('light') ? 'light' : 
 
 let NAMES = 'static'
 let THOUGHTS = 'static'
+let BEHAVIOR: Behavior = 'cozy'
+let LIVELINESS: Liveliness = 'normal'
 
 const LEAD = /^(please\s+)?(fix|implement|rework|refactor|add|update|investigate|review|check|find|write|create|build|run|make|handle|address|resolve)\s+/i
 const STOP = new Set(['the', 'a', 'an', 'and', 'for', 'of', 'in', 'to', 'on', 'with', 'onto', 'into', 'last', 'latest', 'new', 'another', 'remaining'])
@@ -200,6 +240,7 @@ const describeAction = (tool: string, input: Record<string, unknown>) => {
 
 // What a resting avatar says: how its turn ended, or that it waits for someone.
 const moodLabel = (a: Avatar) => {
+  if (a.permissionTokens.size) return '? approval'
   if (a.waiting) return a.id === 'main' ? '? your turn' : '? waiting'
   if (a.mood === 'happy') return '✓ done'
   if (a.mood === 'sad') return '! failed'
@@ -211,6 +252,8 @@ const MOOD_STROKE: Record<string, string> = { happy: '#2f9a5a', sad: '#d9463a', 
 
 // The text of a speech bubble, by the chosen mode.
 const bubbleText = (a: Avatar) => {
+  if (a.permissionTokens.size) return '? approval'
+  if (a.phase !== 'tool') return a.phase + '…'
   if (THOUGHTS === 'ai' && a.thought) return a.thought
   if (THOUGHTS !== 'static' && a.action) return a.action
   return activity(a.tool)
@@ -370,7 +413,7 @@ const SKIN_IDS = Object.keys(SKINS)
 const EYES_HAPPY = ['....E....E....', '...E.E..E.E...']
 const EYES_SAD = ['...E.E..E.E...', '....E....E....', '...E.E..E.E...']
 
-const robotBody = (skin: Skin, color: string, isWorking: boolean, mood = '') => {
+const robotBody = (skin: Skin, color: string, isWorking: boolean, mood = '', moving = isWorking) => {
   const c = skin.palette(color)
   const eyes = mood === 'happy' && !isWorking
     ? pixels(EYES_HAPPY, c, skin.eyeOy)
@@ -379,22 +422,23 @@ const robotBody = (skin: Skin, color: string, isWorking: boolean, mood = '') => 
       : isWorking
     ? pixels(skin.eyesWork, c, skin.eyeOy)
     : `<g><animateTransform attributeName="transform" type="scale" values="1 1;1 1;1 0.15;1 1" keyTimes="0;0.9;0.94;1" dur="4s" repeatCount="indefinite"/>${pixels(skin.eyesIdle, c, skin.eyeOy)}</g>`
-  const legs = isWorking
+  const legs = moving && LIVELINESS !== 'quiet'
     ? `<g>${steps('0 0;0 -3', '0.4s')}${pixels(skin.legsA, c)}</g><g>${steps('0 -3;0 0', '0.4s')}${pixels(skin.legsB, c)}</g>`
     : pixels(skin.legsStill, c)
-  const hop = isWorking || mood === 'happy'
+  const hop = LIVELINESS === 'quiet' ? '' : moving || mood === 'happy'
     ? steps('0 0;0 -3', '0.4s')
     : mood === 'sad'
       ? steps('0 0;2 0;-2 0;0 0', '0.3s')
-      : steps('0 0;0 -3;0 0', '2.4s', 'keyTimes="0;0.5;0.56"')
-  const spark = isWorking
+      : isWorking ? '' : steps('0 0;0 -3;0 0', '2.4s', 'keyTimes="0;0.5;0.56"')
+  const spark = isWorking && moving && LIVELINESS === 'lively'
     ? `<g transform="translate(${5 * U} ${-3 * U})" fill="#ffd23f"><rect x="${U}" y="0" width="${U}" height="${3 * U}"/><rect x="0" y="${U}" width="${3 * U}" height="${U}"/><animate attributeName="opacity" values="1;0" dur="0.6s" calcMode="discrete" repeatCount="indefinite"/></g>`
     : ''
-  return `<g shape-rendering="crispEdges"><g>${hop}<g transform="translate(0 ${7 * U})">${legs}</g>${pixels(skin.body, c)}${eyes}${spark}</g></g>`
+  return `<g shape-rendering="crispEdges"><g class="actor-motion">${hop}<g transform="translate(0 ${7 * U})">${legs}</g>${pixels(skin.body, c)}${eyes}${spark}</g></g>`
 }
 
-const tagSvg = (a: Avatar) => {
-  const name = a.name.length > 18 ? a.name.slice(0, 17) + '…' : a.name
+const tagSvg = (a: Avatar, compact = false) => {
+  const limit = compact ? 8 : 18
+  const name = a.name.length > limit ? a.name.slice(0, limit - 1) + '…' : a.name
   const w = name.length * 5.6 + 10
   const top = GY - 10 * U - 20
   let s = `<g shape-rendering="crispEdges"><rect x="${-w / 2}" y="${top}" width="${w}" height="12" fill="#000" opacity="0.75"/><rect x="${-w / 2}" y="${top}" width="${w}" height="2" fill="${a.color}"/></g>
@@ -405,6 +449,7 @@ const tagSvg = (a: Avatar) => {
     return `<g shape-rendering="crispEdges"><rect x="${-bw / 2}" y="${by}" width="${bw}" height="12" fill="#fff" stroke="${stroke}" stroke-width="1"/><rect x="-2" y="${by + 12}" width="4" height="3" fill="#fff"/></g>
 <text x="0" y="${by + 9}" text-anchor="middle" font-family="${MONO}" font-size="9" fill="#222">${esc(label)}</text>`
   }
+  if (compact && a.id !== 'main') return s
   if (a.isWorking) {
     s += bubble(bubbleText(a), '#222')
   } else if (moodLabel(a)) {
@@ -439,15 +484,22 @@ const withEffects = (a: Avatar, body: string, now: number) => {
   return body
 }
 
-const agentSvg = (a: Avatar, now: number) => {
+const agentSvg = (a: Avatar, now: number, compact = false) => {
+  const arrived = a.isWorking && !a.routeLoop && now - a.pathStart >= a.total * 1000
+  const moving = a.isWorking && !arrived
+  const performance = performanceFor(a.waiting || a.permissionTokens.size ? 'wait' : a.isWorking ? a.workKind : 'rest', BEHAVIOR, a.personality, a.actionSequence)
   const meeting = a.talk !== null && now - a.talk.at < TALK_MS
-  const inner = `<rect x="${-7 * U}" y="${GY}" width="${14 * U}" height="${U}" fill="#888" opacity="0.4" shape-rendering="crispEdges"/>
-<g transform="translate(${-7 * U} ${GY - 10 * U})">${robotBody(SKINS[a.skin] ?? SKINS['robot']!, a.color, a.isWorking, a.mood)}</g>
-${meeting ? `<g><animate attributeName="opacity" values="1;0;1" keyTimes="0;0.22;0.78" calcMode="discrete" dur="${TALK_MS / 1000}s" begin="-${(Math.max(0, now - (a.talk?.at ?? now)) / 1000).toFixed(2)}s" fill="freeze"/>${tagSvg(a)}</g>${talkBubbles(a, now)}` : tagSvg(a)}`
+  const inner = `<title>${esc(a.name)} — ${a.personality.title}: ${a.isWorking ? esc(bubbleText(a)) : esc(moodLabel(a) || 'idle')}</title><rect x="${-7 * U}" y="${GY}" width="${14 * U}" height="${U}" fill="#888" opacity="0.4" shape-rendering="crispEdges"/>
+${arrived ? `<title>at the ${workStation(a.workKind, W, a.seed).title}</title>` : ''}
+${personalitySvg(a.personality, `<g transform="translate(${-7 * U} ${GY - 10 * U})">${robotBody(SKINS[a.skin] ?? SKINS['robot']!, a.color, a.isWorking, a.mood, moving)}</g>${propSvg(performance, GY, a.skin === 'anime' ? '#ffd9b8' : a.color, now, BEHAVIOR, LIVELINESS)}`, GY, now, BEHAVIOR, LIVELINESS)}
+${flourishSvg(a.personality, GY, a.flourishAt, now, BEHAVIOR, LIVELINESS)}
+${cueSvg(a.cue, GY, now, LIVELINESS)}
+${meeting ? `<g><animate attributeName="opacity" values="1;0;1" keyTimes="0;0.22;0.78" calcMode="discrete" dur="${TALK_MS / 1000}s" begin="-${(Math.max(0, now - (a.talk?.at ?? now)) / 1000).toFixed(2)}s" fill="freeze"/>${tagSvg(a, compact)}</g>${talkBubbles(a, now)}` : tagSvg(a, compact)}`
   if (meeting) return `<g>${meetingMove(a, now)}${withEffects(a, inner, now)}</g>`
   if (!a.isWorking) return `<g transform="translate(${Math.round(a.restX)} 0)">${withEffects(a, inner, now)}</g>`
+  if (arrived) return `<g transform="translate(${posAt(a, (now - a.pathStart) / 1000).toFixed(1)} 0)">${withEffects(a, inner, now)}</g>`
 
-  const sec = ((now - a.pathStart) / 1000) % a.total
+  const sec = a.routeLoop ? ((now - a.pathStart) / 1000) % a.total : Math.max(0, (now - a.pathStart) / 1000)
   const values: string[] = []
   const times: string[] = []
   a.segs.forEach((s, i) => {
@@ -458,7 +510,7 @@ ${meeting ? `<g><animate attributeName="opacity" values="1;0;1" keyTimes="0;0.22
     values.push(`${s.to.toFixed(1)} 0`)
     times.push((s.t1 / a.total).toFixed(4))
   })
-  const walk = `<animateTransform attributeName="transform" type="translate" values="${values.join(';')}" keyTimes="${times.join(';')}" dur="${a.total.toFixed(2)}s" begin="-${sec.toFixed(2)}s" repeatCount="indefinite"/>`
+  const walk = `<animateTransform attributeName="transform" type="translate" values="${values.join(';')}" keyTimes="${times.join(';')}" dur="${a.total.toFixed(2)}s" begin="-${sec.toFixed(2)}s" ${a.routeLoop ? 'repeatCount="indefinite"' : 'fill="freeze"'}/>`
   return `<g>${walk}${withEffects(a, inner, now)}</g>`
 }
 
@@ -517,6 +569,14 @@ const officeDesks = () => {
 }
 
 const THEMES: Record<string, Theme> = {
+  workshop: {
+    sky: ['#292b30', '#474039'],
+    ground: ['#a27c53', '#70563e'],
+    cloud: '#b1b4a3',
+    noClouds: true,
+    decor: () => '',
+    layout: now => workshopSvg(W, GY, now),
+  },
   meadow: {
     sky: ['#6fb1e6', '#d8f0fb'],
     ground: ['#5a7d4a', '#3a4f33'],
@@ -952,10 +1012,10 @@ const celebration = (now: number) => {
   return `<g shape-rendering="crispEdges">${out}</g>`
 }
 
-const sceneSvg = (all: Avatar[], now: number) => `<svg xmlns="http://www.w3.org/2000/svg" class="${LOOK}" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}"><style>${LOOK_CSS}</style>
+const sceneSvg = (all: Avatar[], now: number) => `<svg xmlns="http://www.w3.org/2000/svg" class="${LOOK}" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}"><style>${LOOK_CSS}${MOTION_CSS}</style>
 ${sky()}
 ${scenery(now)}
-${all.map(a => agentSvg(a, now)).join('')}
+${all.map(a => agentSvg(a, now, W / Math.max(1, all.length) < 115)).join('')}
 ${celebration(now)}
 </svg>`
 
@@ -984,13 +1044,19 @@ export const register: Register = (on, options) => {
   LOOK_OPTION = ['auto', 'dark', 'light'].includes(String(options['look'])) ? String(options['look']) : 'auto'
   LOOK = LOOK_OPTION === 'auto' ? 'auto' : LOOK_OPTION
   EVENTS = options['events'] !== 'off'
+  BEHAVIOR = ['cozy', 'chaotic', 'adventure'].includes(String(options['behavior'])) ? options['behavior'] as Behavior : 'cozy'
+  LIVELINESS = ['quiet', 'normal', 'lively'].includes(String(options['liveliness'])) ? options['liveliness'] as Liveliness : 'normal'
   const scene = String(options['scene'] ?? 'auto')
   THEME = THEMES[scene] ? scene : (AUTO_SCENE[choice] ?? 'meadow')
+  H = THEME === 'workshop' ? 156 : 100
+  GY = H - 14
   SKY = options['sky'] === 'filled'
   const agents = new Map<string, Avatar>()
   let colorIx = 1
   let spawned = 0
   let isTerminal = false
+  let nextFlourishAt = Infinity
+  let flourishIx = 0
 
   const make = (id: string, name: string, color: string): Avatar => {
     spawned += 1
@@ -1013,6 +1079,18 @@ export const register: Register = (on, options) => {
       nameAsked: false,
       color,
       skin,
+      personality: PERSONALITIES[(spawned - 1) % PERSONALITIES.length]!,
+      workKind: 'plan',
+      actionSequence: 0,
+      actionCounts: {},
+      routeLoop: true,
+      arrived: false,
+      flourishAt: null,
+      phase: 'planning',
+      activeTools: new Map(),
+      toolSerial: 0,
+      permissionTokens: new Set(),
+      cue: null,
       isWorking: false,
       tool: '',
       doneAt: 0,
@@ -1031,17 +1109,16 @@ export const register: Register = (on, options) => {
 
   // Agents the mod did not see start (spawned before it loaded, or before a reload
   // wiped its memory) are picked up from the session's own list.
-  const adopt = (id: string, name: string, working: boolean) => {
+  const adopt = (id: string, name: string, working: boolean, now: number) => {
     const a = make(id, name, COLORS[colorIx++ % COLORS.length] ?? '#37c871')
-    a.spawnAt = Date.now()
-    if (working) startWork(a, Date.now())
+    a.spawnAt = now
+    if (working) startWork(a, now)
     agents.set(id, a)
     return a
   }
 
   // Bring the avatars in line with the session's agent list; true when anything changed.
-  const applyList = (list: AgentRow[]) => {
-    const now = Date.now()
+  const applyList = (list: AgentRow[], now: number) => {
     let changed = false
     const seen = new Set<string>()
     for (const info of list) {
@@ -1052,20 +1129,35 @@ export const register: Register = (on, options) => {
       const a = agents.get(info.id)
       if (!a) {
         if (running || isBlocked) {
-          const added = adopt(info.id, info.description || info.type, running)
+          const added = adopt(info.id, info.description || info.type, running, now)
           added.waiting = isBlocked
           changed = true
         }
       } else if (isBlocked) {
-        if (a.isWorking) stopWork(a, now, true)
-        if (!a.waiting) a.waiting = true
-        changed = true
+        if (a.isWorking || !a.waiting || a.doneAt || a.leaveAt) {
+          stopWork(a, now, true)
+          a.waiting = true
+          a.doneAt = 0
+          a.leaveAt = 0
+          a.mood = ''
+          a.flourishAt = null
+          changed = true
+        }
       } else if (running && !a.isWorking) {
         startWork(a, now)
         changed = true
+      } else if (ended) {
+        // A waiting avatar is already stopped. Completion must still start its
+        // retirement timer, once, even if no turn.complete event reached us.
+        if (a.isWorking || a.waiting || !a.doneAt) {
+          stopWork(a, now)
+          a.waiting = false
+          a.doneAt = a.doneAt || now
+          if (!a.mood) a.mood = info.status === 'failed' ? 'sad' : info.status === 'killed' ? 'stop' : 'happy'
+          changed = true
+        }
       } else if (!running && a.isWorking) {
         stopWork(a, now)
-        if (!a.mood && ended) a.mood = info.status === 'failed' ? 'sad' : info.status === 'killed' ? 'stop' : 'happy'
         changed = true
       } else if (a.waiting) {
         a.waiting = false
@@ -1085,12 +1177,13 @@ export const register: Register = (on, options) => {
   }
 
   on('session.start', async ($, e, next) => {
+    nextFlourishAt = await $.clock.now() + flourishInterval(LIVELINESS)
     try {
       await $.command.register({ name: 'avatars', description: 'Show which agents the avatar scene knows about' })
     } catch {
       // a command is a convenience; the scene works without it
     }
-    void $.agent.list().then(applyList).then(c => c && $.ui.invalidate('ui.render'), () => undefined)
+    void $.agent.list().then(async list => applyList(list, await $.clock.now())).then(c => c && $.ui.invalidate('ui.render'), () => undefined)
     const readTheme = () =>
       $.config.list().then(
         rows => {
@@ -1105,12 +1198,12 @@ export const register: Register = (on, options) => {
       )
     void readTheme()
     let ticks = 0
-    $.clock.every(FRAME_MS, () => {
-      const now = Date.now()
+    $.clock.every(FRAME_MS, async () => {
+      const now = await $.clock.now()
       let changed = false
       ticks += 1
       if (ticks % 8 === 0) void readTheme()
-      if (ticks % 8 === 0) void $.agent.list().then(applyList).then(c => c && $.ui.invalidate('ui.render'), () => undefined)
+      if (ticks % 8 === 0) void $.agent.list().then(async list => applyList(list, await $.clock.now())).then(c => c && $.ui.invalidate('ui.render'), () => undefined)
       if (mainAv.mood && now - mainAv.moodAt > MOOD_MS) {
         mainAv.mood = ''
         changed = true
@@ -1120,12 +1213,21 @@ export const register: Register = (on, options) => {
         changed = true
       }
       for (const a of [mainAv, ...agents.values()]) {
+        if (a.cue && a.cue.kind !== 'permission' && now - a.cue.at >= CUE_MS) { a.cue = null; changed = true }
+        if (a.flourishAt !== null && (now - a.flourishAt >= FLOURISH_MS || a.waiting || a.leaveAt || a.mood || a.talk)) {
+          a.flourishAt = null
+          changed = true
+        }
+        if (a.isWorking && !a.routeLoop && !a.arrived && now - a.pathStart >= a.total * 1000) {
+          a.arrived = true
+          changed = true
+        }
         if (a.talk && now - a.talk.at > TALK_MS) {
           a.talk = null
           changed = true
         }
       }
-      const asking = now - mainAv.askingAt < ASK_TTL
+      const asking = now - mainAv.askingAt < ASK_TTL || mainAv.permissionTokens.size > 0
       if (asking !== mainAv.waiting) {
         mainAv.waiting = asking
         changed = true
@@ -1141,6 +1243,18 @@ export const register: Register = (on, options) => {
           changed = true
         }
       }
+      const cast = [mainAv, ...agents.values()]
+      if (now >= nextFlourishAt && !PARTY && !cast.some(a => a.talk || a.flourishAt !== null)) {
+        const ready = cast.filter(a => !a.waiting && !a.permissionTokens.size && !a.cue && !a.leaveAt && !a.mood && (a.id === 'main' || a.isWorking))
+        const actor = ready[flourishIx % Math.max(1, ready.length)]
+        if (actor) {
+          actor.flourishAt = now
+          actor.actionSequence += 1
+          flourishIx += 1
+          changed = true
+        }
+        nextFlourishAt = now + flourishInterval(LIVELINESS)
+      }
       // The terminal animates by redrawing; the desktop's SVG animates itself.
       if (isTerminal || changed) $.ui.invalidate('ui.render')
     })
@@ -1150,9 +1264,17 @@ export const register: Register = (on, options) => {
   on('agent.spawn', async ($, e, next) => {
     const res = await next(e)
     if ('agentId' in res && res.agentId) {
-      const a = make(res.agentId, e.name ?? e.description ?? `spawned${spawned}`, COLORS[colorIx++ % COLORS.length] ?? '#37c871')
-      startWork(a, Date.now())
-      a.spawnAt = Date.now()
+      const now = await $.clock.now()
+      const existing = agents.get(res.agentId)
+      const label = e.name ?? e.description ?? `spawned${spawned}`
+      const a = existing ?? make(res.agentId, label, COLORS[colorIx++ % COLORS.length] ?? '#37c871')
+      if (existing) {
+        a.desc = label
+        a.name = NAMES === 'static' ? label : shorten(label)
+      } else {
+        startWork(a, now)
+        a.spawnAt = now
+      }
       a.handle = e.name ?? ''
       agents.set(a.id, a)
       $.ui.invalidate('ui.render')
@@ -1178,12 +1300,60 @@ export const register: Register = (on, options) => {
     } catch (err) {
       engine = `  error: ${String(err)}`
     }
-    const mine = [mainAv, ...agents.values()].map(a => `  ${a.id.slice(0, 8)}  ${a.isWorking ? 'working  ' : 'idle     '} ${a.skin}: ${a.name}${a.mood ? ' [' + a.mood + ']' : ''}${a.waiting ? ' [waiting]' : ''}${a.leaveAt ? ' (leaving)' : ''}`).join('\n')
-    return { text: `agent-avatars ${VERSION}, character ${choice}, scene ${THEME}\n\nOn the scene:\n${mine}\n\nThe session's agents:\n${engine}` }
+    const mine = [mainAv, ...agents.values()].map(a => `  ${a.id.slice(0, 8)}  ${a.isWorking ? 'working  ' : 'idle     '} ${a.skin}: ${a.name}${a.mood ? ' [' + a.mood + ']' : ''}${a.waiting ? ' [waiting]' : ''}${a.leaveAt ? ' (leaving)' : ''} — ${a.personality.title}, ${performanceFor(a.waiting ? 'wait' : a.isWorking ? a.workKind : 'rest', BEHAVIOR, a.personality, a.actionSequence).description}`).join('\n')
+    return { text: `agent-avatars ${VERSION}, character ${choice}, scene ${THEME}, behavior ${BEHAVIOR}, liveliness ${LIVELINESS}\n\nOn the scene:\n${mine}\n\nThe session's agents:\n${engine}` }
+  })
+
+  on('turn.start', async ($, e, next) => {
+    const now = await $.clock.now()
+    const a = e.agentId ? agents.get(e.agentId) ?? adopt(e.agentId, 'agent', true, now) : mainAv
+    a.activeTools.clear()
+    a.permissionTokens.clear()
+    a.waiting = false
+    a.tool = ''
+    a.thought = ''
+    a.cue = null
+    a.phase = 'planning'
+    a.flourishAt = null
+    setWorkKind(a, 'plan', now)
+    startWork(a, now)
+    $.ui.invalidate('ui.render')
+    return next(e)
+  })
+
+  on('turn.step', async function* ($, e, next) {
+    const now = await $.clock.now()
+    const a = e.agentId ? agents.get(e.agentId) ?? adopt(e.agentId, 'agent', true, now) : mainAv
+    if (a.activeTools.size === 0) {
+      a.phase = 'thinking'
+      a.flourishAt = null
+      setWorkKind(a, 'think', now)
+      startWork(a, now)
+      $.ui.invalidate('ui.render')
+    }
+    const stream = next(e)
+    let replying = false
+    let finished = false
+    try {
+      while (true) {
+        const item = await stream.next()
+        if (item.done) { finished = true; return item.value }
+        if (!replying && item.value.kind === 'text' && a.isWorking && a.activeTools.size === 0) {
+          replying = true
+          a.phase = 'replying'
+          setWorkKind(a, 'reply', await $.clock.now())
+          $.ui.invalidate('ui.render')
+        }
+        yield item.value
+      }
+    } finally {
+      if (!finished) await (stream as AsyncGenerator<unknown, unknown, unknown>).return(undefined)
+    }
   })
 
   on('tool.call', async ($, e, next) => {
-    let a = e.agentId ? agents.get(e.agentId) : undefined
+    const now = await $.clock.now()
+    let a = e.agentId ? agents.get(e.agentId) : mainAv
     if (!a && e.agentId) {
       let name = 'agent'
       try {
@@ -1191,16 +1361,25 @@ export const register: Register = (on, options) => {
       } catch {
         // the list is only for the name
       }
-      a = adopt(e.agentId, name, true)
+      a = adopt(e.agentId, name, true, now)
     }
+    let token = 0
     if (a) {
-      const now = Date.now()
+      a.flourishAt = null
+      const kind = kindForTool(e.tool)
+      const sequence = a.actionCounts[kind] ?? 0
+      a.actionCounts[kind] = sequence + 1
+      setWorkKind(a, kind, now)
+      a.actionSequence = sequence
+      a.phase = 'tool'
       a.tool = e.tool
       a.action = describeAction(e.tool, e as unknown as Record<string, unknown>)
+      token = ++a.toolSerial
+      a.activeTools.set(token, { tool: a.tool, action: a.action, kind, sequence })
       a.recent = [...a.recent, a.action].slice(-5)
       startWork(a, now)
       $.ui.invalidate('ui.render')
-      if (NAMES === 'ai' && !a.nameAsked) {
+      if (a !== mainAv && NAMES === 'ai' && !a.nameAsked) {
         a.nameAsked = true
         void ask($, nameQuestion(a.desc)).then(n => {
           if (n) {
@@ -1224,14 +1403,45 @@ export const register: Register = (on, options) => {
         )
       }
     }
-    return next(e)
+    try {
+      const result = await next(e)
+      if (a && a.activeTools.has(token) && a.isWorking && ('deny' in result || result.isError)) {
+        a.cue = { kind: 'tool-error', at: await $.clock.now() }
+        a.flourishAt = null
+      } else if (a && a.activeTools.has(token) && a.isWorking && a.cue?.kind !== 'permission') {
+        // Even a sub-frame Read gets a brief, explicitly past-tense visual
+        // receipt. It does not keep the agent's current state at "reading".
+        const finished = a.activeTools.get(token)!
+        a.cue = { kind: 'tool-result', at: await $.clock.now(), performance: performanceFor(finished.kind, BEHAVIOR, a.personality, finished.sequence) }
+      }
+      return result
+    } finally {
+      if (a) {
+        a.permissionTokens.delete(token)
+        if (!a.permissionTokens.size && a.cue?.kind === 'permission') a.cue = null
+      }
+      if (a && a.activeTools.delete(token) && a.isWorking) {
+        const finishedAt = await $.clock.now()
+        const pending = [...a.activeTools.values()].pop()
+        a.tool = pending?.tool ?? ''
+        a.action = pending?.action ?? ''
+        a.phase = pending ? 'tool' : 'thinking'
+        setWorkKind(a, pending?.kind ?? 'think', finishedAt)
+        if (pending) a.actionSequence = pending.sequence
+        $.ui.invalidate('ui.render')
+      }
+    }
   })
 
   on('turn.complete', async ($, e, next) => {
     const a = e.agentId ? agents.get(e.agentId) : mainAv
     if (a) {
-      const now = Date.now()
+      const now = await $.clock.now()
       stopWork(a, now)
+      a.activeTools.clear()
+      a.permissionTokens.clear()
+      a.cue = null
+      a.waiting = false
       a.mood = e.reason === 'answer' ? 'happy' : e.reason === 'aborted' ? 'stop' : 'sad'
       a.moodAt = now
       $.ui.invalidate('ui.render')
@@ -1241,18 +1451,65 @@ export const register: Register = (on, options) => {
     return next(e)
   })
 
+  on('tool.check', async ($, e, next) => {
+    const result = await next(e)
+    const a = e.agentId ? agents.get(e.agentId) : mainAv
+    // Only an in-flight call is a real approval wait; permission queries are not.
+    const token = a ? [...a.activeTools.entries()].reverse().find(([, call]) => call.tool === e.tool)?.[0] : undefined
+    if (a && token !== undefined && result.decision === 'ask') {
+      a.permissionTokens.add(token)
+      a.cue = { kind: 'permission', at: await $.clock.now() }
+      a.flourishAt = null
+      $.ui.invalidate('ui.render')
+    }
+    return result
+  })
+
+  on('command.run', async ($, e, next) => {
+    mainAv.cue = { kind: 'command', at: await $.clock.now() }
+    mainAv.flourishAt = null
+    $.ui.invalidate('ui.render')
+    return next(e)
+  })
+
+  on('config.set', async ($, e, next) => {
+    const result = await next(e)
+    if (!('deny' in result)) {
+      if (e.key === 'agent-avatars.behavior' && ['cozy', 'chaotic', 'adventure'].includes(String(result.value))) BEHAVIOR = result.value as Behavior
+      if (e.key === 'agent-avatars.liveliness' && ['quiet', 'normal', 'lively'].includes(String(result.value))) LIVELINESS = result.value as Liveliness
+      if (e.key === 'theme' && LOOK_OPTION === 'auto') LOOK = lookFromTheme(String(result.value))
+      mainAv.cue = { kind: 'config', at: await $.clock.now() }
+      mainAv.flourishAt = null
+      nextFlourishAt = await $.clock.now() + flourishInterval(LIVELINESS)
+      $.ui.invalidate('ui.render')
+    }
+    return result
+  })
+
+  on('session.compact', async ($, e, next) => {
+    const a = e.agentId ? agents.get(e.agentId) : mainAv
+    if (a) {
+      a.cue = { kind: 'compact', at: await $.clock.now() }
+      a.flourishAt = null
+      $.ui.invalidate('ui.render')
+    }
+    return next(e)
+  })
+
   // Agents talking to each other: only who sends to whom is read, never the text.
   on('session.send', async ($, e, next) => {
     const from = e.agentId ? agents.get(e.agentId) : mainAv
     const to = e.to === 'main' ? mainAv : [...agents.values()].find(a => a.id === e.to || (a.handle !== '' && a.handle === e.to))
     if (from && to && from !== to) {
-      const now = Date.now()
+      const now = await $.clock.now()
       const xf = xOf(from, now)
       const xt = xOf(to, now)
       const meet = Math.max(60, Math.min(W - 60, (xf + xt) / 2))
       const gap = 26
       from.talk = { at: now, x0: xf, stand: xf <= xt ? meet - gap : meet + gap, role: 'send', seed: now % 997 }
       to.talk = { at: now, x0: xt, stand: xf <= xt ? meet + gap : meet - gap, role: 'recv', seed: now % 997 }
+      from.flourishAt = null
+      to.flourishAt = null
       $.ui.invalidate('ui.render')
     }
     return next(e)
@@ -1261,11 +1518,17 @@ export const register: Register = (on, options) => {
   // What happens on GitHub reaches the session as an external event; only its kind
   // and outcome are read, and nothing is written on screen.
   on('session.receive', async ($, e, next) => {
+    const receiver = e.agentId ? agents.get(e.agentId) : mainAv
+    if (receiver) {
+      receiver.cue = { kind: 'incoming', at: await $.clock.now() }
+      receiver.flourishAt = null
+      $.ui.invalidate('ui.render')
+    }
     const ev = e.event
     if (EVENTS && ev && ev.source === 'github') {
       const data = ev.data
       const outcome = String(data['outcome'] ?? data['conclusion'] ?? data['state'] ?? data['status'] ?? '').toLowerCase()
-      const now = Date.now()
+      const now = await $.clock.now()
       if (ev.kind.startsWith('pull_request') && (outcome === 'merged' || data['merged'] === true)) {
         PARTY = { at: now }
         for (const a of [mainAv, ...agents.values()]) {
@@ -1286,7 +1549,7 @@ export const register: Register = (on, options) => {
 
   // The question dialog is drawn while it is open; the main avatar waits for you meanwhile.
   on('ui.render', { component: 'AskUserQuestion' }, async ($, e, next) => {
-    const now = Date.now()
+    const now = await $.clock.now()
     const isFresh = now - mainAv.askingAt < ASK_TTL
     mainAv.askingAt = now
     if (!isFresh) {
@@ -1300,6 +1563,7 @@ export const register: Register = (on, options) => {
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
     const list = [...agents.values()]
     if (e.props.hasSurvey) return next(e)
+    const now = await $.clock.now()
 
     isTerminal = e.surface === 'terminal'
     // ~7.9 px per cell, measured from the desktop's band (752 px at ~95 cells)
@@ -1307,18 +1571,17 @@ export const register: Register = (on, options) => {
     if (Math.abs(w - W) > 6) {
       W = w
       for (const a of [mainAv, ...agents.values()]) {
-        a.restX = Math.min(a.restX, W - 40)
+        a.restX = Math.min(a.isWorking ? posAt(a, (now - a.pathStart) / 1000) : a.restX, W - 40)
         if (a.isWorking) {
           a.epoch += 1
-          a.pathStart = Date.now()
+          a.pathStart = now
           makePath(a)
         }
       }
     }
-    const now = await $.clock.now()
     if (e.props.isWorking) startWork(mainAv, now)
     else stopWork(mainAv, now)
-    mainAv.waiting = mainAv.waiting && now - mainAv.askingAt < ASK_TTL
+    mainAv.waiting = mainAv.permissionTokens.size > 0 || mainAv.waiting && now - mainAv.askingAt < ASK_TTL
     const all: Avatar[] = [mainAv, ...list]
 
     if (e.surface === 'desktop' || e.surface === 'vscode') {
@@ -1326,7 +1589,7 @@ export const register: Register = (on, options) => {
       return (
         <Svg
           source={sceneSvg(all, now)}
-          alt={`Agents: ${all.map(a => `${a.name} ${a.isWorking ? 'working' : 'idle'}`).join(', ')}`}
+          alt={`Agents: ${all.map(a => `${a.name} (${a.personality.title}) ${a.isWorking ? bubbleText(a) : moodLabel(a) || 'idle'}: ${performanceFor(a.waiting || a.permissionTokens.size ? 'wait' : a.isWorking ? a.workKind : 'rest', BEHAVIOR, a.personality, a.actionSequence).description}${a.cue ? '; ' + cueLabel(a.cue) : ''}`).join(', ')}`}
           width={W}
           height={H}
           isInteractive
@@ -1356,6 +1619,7 @@ export const register: Register = (on, options) => {
               <Text color={a.color}>{pad(sp.legs)}</Text>
               {sp.hop ? null : gap}
               <Text bold>{pad(a.name)}</Text>
+              <Text dimColor>{pad(a.personality.title)}</Text>
               <Text dimColor>{pad(a.isWorking ? bubbleText(a) : moodLabel(a) || 'idle')}</Text>
             </Box>
           )

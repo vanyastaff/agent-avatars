@@ -1,0 +1,195 @@
+import { expect, mock, test } from 'claude-code/testing'
+import { heldTools } from './host.ts'
+
+const BAND = {
+  plugin: 'agent-avatars', component: 'AbovePrompt', surface: 'desktop',
+  props: { isWorking: true, bodyColumns: 95 },
+} as const
+
+test('the default workshop has distinct work stations', async ($, on) => {
+  mock.clock(on, { now: 100000 })
+  const ui = await $.ui.mount(BAND)
+  const source = String((await ui.find({ type: 'Svg' }))?.props.source)
+  for (const station of ['Library', 'Map board', 'Workbench', 'Engine']) {
+    expect(source.includes(station)).toBe(true)
+  }
+  await ui.unmount()
+})
+
+test('turn hooks distinguish planning, thinking, tool execution and replying', { timeoutMs: 10000 }, async ($, on) => {
+  const clock = mock.clock(on, { now: 100000 })
+  on('turn.start', ($, e) => ({ turnId: e.turnId }))
+  on('turn.complete', () => ({ text: '' }))
+  on('tool.call', async () => { await clock.sleep(1000); return { result: 'ok' } })
+  on('turn.step', async function* ($, e) {
+    await clock.sleep(1000)
+    yield { kind: 'text', index: 0, text: 'Here is the answer' }
+    await clock.sleep(1000)
+    return { turnId: e.turnId, index: e.index, answer: 'Here is the answer', toolUses: [], stopReason: 'end_turn', usage: null }
+  })
+  await $.turn.start({ turnId: 't', text: 'Work' })
+  const ui = await $.ui.mount(BAND)
+  const source = async () => String((await ui.find({ type: 'Svg' }))?.props.source)
+  expect((await source()).includes('planning…')).toBe(true)
+  const stream = $.turn.step({ turnId: 't', index: 0, model: 'test', messageCount: 1 })
+  const first = stream.next()
+  await clock.settle()
+  expect((await source()).includes('thinking…')).toBe(true)
+  await clock.advance(1000)
+  await first
+  expect((await source()).includes('replying…')).toBe(true)
+  const finish = stream.next()
+  await clock.advance(1000)
+  expect((await finish).value.answer).toBe('Here is the answer')
+  const read = $.tool.call({ tool: 'Read', file_path: '/work/a.rs' })
+  await clock.settle()
+  expect((await source()).includes('reading…')).toBe(true)
+  await clock.advance(1000)
+  await read
+  expect((await source()).includes('thinking…')).toBe(true)
+  await $.turn.complete({ turnId: 't', answer: 'Done', durationMs: 3000, isAborted: false, reason: 'answer' })
+  await ui.redraw({ isWorking: false, bodyColumns: 95 })
+  expect((await source()).includes('✓ done')).toBe(true)
+  await ui.unmount()
+})
+
+for (const [liveliness, delay] of [['quiet', 30000], ['normal', 16000], ['lively', 8000]] as const) {
+  test(`${liveliness} schedules a bounded personality moment after ${delay}ms`, { options: { liveliness } }, async ($, on) => {
+    const clock = mock.clock(on, { now: 100000 })
+    on('agent.list', () => ({ value: [] }))
+    on('config.list', () => ({ value: [] }))
+    on('command.register', () => ({ value: undefined }))
+    on('session.start', () => ({ cwd: '/work' }))
+    await $.session.start({ surface: 'desktop', isInteractive: true, cwd: '/work' })
+    const ui = await $.ui.mount(BAND)
+    await clock.advance(delay - 250)
+    expect(String((await ui.find({ type: 'Svg' }))?.props.source).includes('Personality moment:')).toBe(false)
+    await clock.advance(250)
+    expect(String((await ui.find({ type: 'Svg' }))?.props.source).includes('Personality moment:')).toBe(true)
+    await clock.advance(2500)
+    expect(String((await ui.find({ type: 'Svg' }))?.props.source).includes('Personality moment:')).toBe(false)
+    await ui.unmount()
+  })
+}
+
+for (const [behavior, description] of [['cozy', 'reading a book'], ['chaotic', 'reading upside down'], ['adventure', 'unrolling a scroll']] as const) {
+  test(`${behavior} behavior changes the performance while preserving the reading status`, { options: { behavior } }, async ($, on) => {
+    const clock = mock.clock(on, { now: 100000 })
+    const start = heldTools($, on, clock)
+    const finish = await start({ tool: 'Read', file_path: '/work/a.rs' })
+    const ui = await $.ui.mount(BAND)
+    expect(String((await ui.find({ type: 'Svg' }))?.props.alt).includes(description)).toBe(true)
+    expect(String((await ui.find({ type: 'Svg' }))?.props.source).includes('reading…')).toBe(true)
+    await finish()
+    await ui.unmount()
+  })
+}
+
+test('workshop agents reach a work station instead of looping forever', async ($, on) => {
+  const clock = mock.clock(on, { now: 100000 })
+  on('agent.list', () => ({ value: [] }))
+  on('config.list', () => ({ value: [] }))
+  on('command.register', () => ({ value: undefined }))
+  on('session.start', () => ({ cwd: '/work' }))
+  const start = heldTools($, on, clock)
+  await $.session.start({ surface: 'desktop', isInteractive: true, cwd: '/work' })
+  const finishRead = await start({ tool: 'Read', file_path: '/work/a.rs' })
+  const ui = await $.ui.mount(BAND)
+  await clock.advance(20000)
+  const source = String((await ui.find({ type: 'Svg' }))?.props.source)
+  expect(source.includes('at the library')).toBe(true)
+  expect(source.includes('NaN')).toBe(false)
+  await finishRead()
+  const finishRun = await start({ tool: 'Bash', command: 'cargo test' })
+  await clock.advance(20000)
+  expect(String((await ui.find({ type: 'Svg' }))?.props.source).includes('at the engine')).toBe(true)
+  await finishRun()
+  await ui.unmount()
+})
+
+test('tool actions use real objects and vary without changing the work status', async ($, on) => {
+  const clock = mock.clock(on, { now: 100000 })
+  const start = heldTools($, on, clock)
+  const ui = await $.ui.mount(BAND)
+  const finishFirst = await start({ tool: 'Read', file_path: '/work/a.rs' })
+  const first = String((await ui.find({ type: 'Svg' }))?.props.alt)
+  expect(first.includes('reading a book')).toBe(true)
+  await finishFirst()
+  const finishSecond = await start({ tool: 'Read', file_path: '/work/b.rs' })
+  const next = String((await ui.find({ type: 'Svg' }))?.props.alt)
+  expect(next.includes('taking notes')).toBe(true)
+  await finishSecond()
+  const finishSearch = await start({ tool: 'Grep', pattern: 'TODO' })
+  expect(String((await ui.find({ type: 'Svg' }))?.props.alt).includes('searching with a magnifier')).toBe(true)
+  const finishEdit = await start({ tool: 'Edit', file_path: '/work/a.rs', old_string: 'old', new_string: 'new' })
+  expect(String((await ui.find({ type: 'Svg' }))?.props.alt).includes('working with a pencil')).toBe(true)
+  const finishRun = await start({ tool: 'Bash', command: 'cargo test' })
+  const source = String((await ui.find({ type: 'Svg' }))?.props.source)
+  expect(source.includes('turning a crank')).toBe(true)
+  expect(source.includes('✓ done')).toBe(false)
+  await finishRun()
+  await finishEdit()
+  await finishSearch()
+  await ui.unmount()
+})
+
+test('identical robot skins have distinct stable personalities', async ($, on) => {
+  const clock = mock.clock(on, { now: 100000 })
+  let ix = 0
+  on('agent.spawn', () => ({ model: 'haiku', agentId: `worker-${++ix}` }))
+  on('tool.call', () => ({ result: 'ok' }))
+  for (const name of ['Ada', 'Bo', 'Cy', 'Dee']) await $.agent.spawn({ name, description: name, prompt: 'Work' })
+  const ui = await $.ui.mount(BAND)
+  const first = String((await ui.find({ type: 'Svg' }))?.props.alt)
+  for (const personality of ['Meticulous', 'Curious', 'Dramatic', 'Sleepy', 'Shy']) expect(first.includes(personality)).toBe(true)
+  await clock.advance(4000)
+  await $.tool.call({ tool: 'Read', agentId: 'worker-1', file_path: '/work/a.rs' })
+  const next = String((await ui.find({ type: 'Svg' }))?.props.alt)
+  expect(next.includes('Ada (Curious)')).toBe(true)
+  await ui.unmount()
+})
+
+test('autonomous moments take turns and yield immediately to a real command', { options: { liveliness: 'lively' } }, async ($, on) => {
+  const clock = mock.clock(on, { now: 100000 })
+  on('agent.list', () => ({ value: ['Ada', 'Bo', 'Cy'].map(id => ({ id, description: id, type: 'general-purpose', status: 'running' })) }))
+  on('config.list', () => ({ value: [] }))
+  on('command.register', () => ({ value: undefined }))
+  on('session.start', () => ({ cwd: '/work' }))
+  on('command.run', () => ({ text: 'ok' }))
+  await $.session.start({ surface: 'desktop', isInteractive: true, cwd: '/work' })
+  const ui = await $.ui.mount(BAND)
+  await clock.advance(8000)
+  let source = String((await ui.find({ type: 'Svg' }))?.props.source)
+  expect((source.match(/Personality moment:/g) ?? []).length).toBe(1)
+  await $.command.run({ command: 'help', args: '' })
+  source = String((await ui.find({ type: 'Svg' }))?.props.source)
+  expect(source.includes('Personality moment:')).toBe(false)
+  expect(source.includes('Event: checking the task board')).toBe(true)
+  await clock.advance(8000)
+  source = String((await ui.find({ type: 'Svg' }))?.props.source)
+  expect((source.match(/Personality moment:/g) ?? []).length).toBe(1)
+  expect(source.includes('Personality moment: looks behind everything')).toBe(true)
+  await ui.unmount()
+})
+
+test('a narrow resized workshop keeps every actor and reaches its new station', async ($, on) => {
+  const clock = mock.clock(on, { now: 100000 })
+  const start = heldTools($, on, clock)
+  let ix = 0
+  on('agent.spawn', () => ({ model: 'haiku', agentId: `worker-${++ix}` }))
+  for (const name of ['Ada', 'Bo', 'Cy', 'Dee']) await $.agent.spawn({ name, description: name, prompt: 'Work' })
+  const finish = await start({ tool: 'Read', file_path: '/work/a.rs' })
+  const ui = await $.ui.mount(BAND)
+  await clock.advance(2000)
+  await ui.redraw({ isWorking: true, bodyColumns: 45 })
+  await clock.advance(20000)
+  await ui.redraw()
+  const svg = await ui.find({ type: 'Svg' })
+  expect(svg?.props.width).toBe(360)
+  expect(String(svg?.props.alt).includes('Dee (Shy)')).toBe(true)
+  expect(String(svg?.props.source).includes('at the library')).toBe(true)
+  expect(String(svg?.props.source).includes('NaN')).toBe(false)
+  expect(String(svg?.props.source).length < 131072).toBe(true)
+  await finish()
+  await ui.unmount()
+})
