@@ -22,3 +22,8 @@ Implementation complete as 0.6.0, including the user's additional hook-driven
 direction. 38 native tests pass, strict validation and diff whitespace check pass.
 Production SVG PNG previews inspected; live browser/Claude playback unverified.
 Evidence and limits: reviews/agent-theater.md.
+
+Publication complete on 2026-10-16: implementation commit 63db4e6 pushed to main.
+The named marketplace refresh and user-scoped plugin update succeeded; installed
+agent-avatars is enabled at 0.6.0. Restart Claude Code to apply the updated code.
+See decisions/devops/agent-theater.md for commands and rollback guidance.

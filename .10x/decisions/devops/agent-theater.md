@@ -21,4 +21,10 @@ if needed, then refresh and update the same marketplace. Never force-push main
 or overwrite user plugin configuration. Restart/reload instructions follow the
 installed CLI output; do not restart the user's application automatically.
 
-Publication and installation results will be recorded after executing the steps.
+Published implementation commit 63db4e6 to origin/main on 2026-10-16.
+`claude plugin marketplace update agent-avatars --json` returned outcome ok.
+`claude plugin update agent-avatars@agent-avatars --scope user --json` returned
+outcome ok, updated 0.5.0 to 0.6.0. `claude plugin list --json` confirmed 0.6.0,
+user scope, enabled. CLI requires restart to apply; no restart was performed.
+Installed register.tsx, theater.ts and plugin.json match the published sources
+after normalizing Git checkout line endings (LF/CRLF).
