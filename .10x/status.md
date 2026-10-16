@@ -33,3 +33,9 @@ multi-stage real-tool actions. 54 native tests, strict validation and diff check
 pass. Production preview contact sheet inspected. No publication/install update
 for this follow-up; live application playback remains unverified. Details:
 decisions/sde/event-choreography.md and reviews/event-choreography.md.
+
+Scene-environments follow-up complete locally as 0.8.0: every one of the 14 worlds
+has reachable objects/actions and event-gated feedback. Old looping routes are
+removed. 74 native tests, strict validation and diff checks pass; wide and narrow
+production SVG contact sheets inspected. No publication or installed-copy update
+for this follow-up. See decisions/sde/scene-environments.md and its review.

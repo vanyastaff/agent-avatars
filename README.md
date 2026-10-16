@@ -2,7 +2,7 @@
 
 A [Claude Code mod](https://code.claude.com/docs/en/plugins/mods/overview) that puts a tiny pixel-art world above the prompt. The main agent and every subagent are little pixel characters (robots, cats, dragons, anime kids):
 
-- **Working:** characters plan at the task board, think, write replies, and use books, magnifiers, pencils, tools and machines. In the workshop they walk to a work station and settle there.
+- **Working:** characters plan, think, write replies, and interact with the selected world's objects. Every world has reachable reading, searching, crafting and running places; actors settle there instead of walking forever.
 - **Idle or done:** it stands still, blinks and sleeps (`z z`).
 - **Enter and exit:** a new subagent pops in with a bounce; a finished one flickers, floats up and vanishes in a puff of pixels after 15 seconds.
 
@@ -42,7 +42,50 @@ Open `/config` and find the mod's rows. After a change the mod reloads by itself
 | `sky` (Background) | `transparent`, `filled` (paints a sky behind the scenery) | `transparent` |
 | `look` (Light or dark) | `auto` (follows your Claude Code `theme`, and the system when that says auto), `dark`, `light` | `auto` |
 
-Scenes at a glance: `office` has desks with flickering monitors and your agents walk from desk to desk; `beach` has palms, umbrellas and gulls; `city` is a neon skyline at night; `ocean` has seaweed, coral, treasure chests and rising bubbles; `halloween` has pumpkins, tombstones and bats under a big moon.
+Scenes keep their own skies, ambient details and colors, and now include usable
+objects. `auto` still selects meadow for robots, home for cats, lava for dragons
+and sakura for anime characters.
+
+### Places and actions in every world
+
+Version 0.8.0 gives all 14 scenes four work places. Each row follows the same real
+events: Read/NotebookRead, search/scouting tools, Edit/Write, and command tools.
+
+| Scene | Reading | Searching | Crafting | Running |
+| --- | --- | --- | --- | --- |
+| workshop | Library | Map board | Workbench | Engine |
+| meadow | Field journal | Butterfly patch | Seedling bed | Water wheel |
+| home | Reading sofa | Toy chest | Sewing table | Kitchen stove |
+| lava | Rune tablet | Crystal vein | Forge anvil | Bellows furnace |
+| sakura | Poetry stand | Koi pond | Bonsai bench | Tea hearth |
+| snow | Expedition board | Snow drift | Ice sculpture | Camp stove |
+| night | Star atlas | Observatory telescope | Lantern bench | Campfire |
+| desert | Explorer map | Dig site | Mosaic table | Oasis pump |
+| space | Star chart console | Radar dish | Repair dock | Reactor console |
+| office | Archive cabinet | Search terminal | Drafting desk | Office printer |
+| beach | Tide chart | Shell sorting tray | Sandcastle | Water pump |
+| city | News kiosk | Transit map | Repair stall | Signal cabinet |
+| ocean | Shell archive | Coral survey | Pearl bench | Air pump |
+| halloween | Spell lectern | Clue pumpkin | Potion bench | Cauldron |
+
+Characters reach toward the object, read on the home sofa, guide fabric through
+the sewing machine, turn a wheel, tend a kettle, feed paper, carve ice or stir a
+cauldron. The object responds only while a matching actor is there and free of an
+approval wait or duet. A failed tool produces a trouble cue; it does not imply a
+failed turn or that the problem was fixed. These remain visual metaphors for
+tool kinds, never deductions from command text, model reasoning or message text.
+
+All scenes use a 156-unit band to leave room for the objects and labels. Routes
+approach once within 2.2 seconds and stop. After a real result the actor completes
+its closing gesture at the object before moving to a thinking place; the actual
+tool status changes immediately. Fast results keep a bounded visual postlude
+after arrival, without delaying the tool. Resizing replans the approach.
+Personality, behavior presets, quiet mode and event-driven duets still apply.
+
+See the [all-world gallery](docs/previews/worlds.html) and the static contact
+sheets: [first seven worlds](docs/previews/worlds-1.png),
+[remaining seven worlds](docs/previews/worlds-2.png). Wide and 360-pixel light,
+transparent, quiet variants use the production renderer.
 
 The original 13 scenes (the animated parts are in the GIFs above):
 
@@ -192,8 +235,9 @@ Run `/avatars` to see which agents the scene is drawing next to the agents the s
 
 `hooks/register.tsx` observes turn, tool, command, configuration and session
 events and draws the `AbovePrompt` band. `hooks/theater.ts` contains pure
-personality, object and workshop artwork. Workshop routes approach a station
-once; other scenes keep their seeded looping walks. Animation phase is kept
+personality, object and workshop artwork. `hooks/worlds.ts` owns world-specific
+places, actions and object responses. All routes approach a station once; the
+old looping-work routes and office-only desk routing are removed. Animation phase is kept
 across redraws. Hooks pass original events, streams and results through.
 
 The mod observes session events and draws; it does not read or write project files or start processes itself. The optional `ai` modes ask the host to call Haiku using your Claude usage, and optional sounds ask the host to play bundled audio. Both are off by default. Inspect the registered hooks and host API calls with:
@@ -216,16 +260,20 @@ No Node.js packages, sign-in, or model requests are needed. Tests load the real
 hooks through `register`, stub host APIs, and advance a controlled host clock.
 They check agent retirement and resumption, main-agent activity, SVG text escaping,
 AI opt-in and throttling, and tool execution when the observer's host API fails.
-The 54-test suite also covers event-driven duets, all five personality roles,
+The 74-test suite also covers event-driven duets, all five personality roles,
 multi-stage/fast actions, busy recipients, delivery failures, parallel-call
 continuity, interruption, resize, approval waits and old-turn result isolation.
+It additionally checks every world's reachable places and actual tool actions,
+narrow resizing, object activity only after arrival, permission/failure behavior,
+fast-result postludes and all four automatic skin-to-world mappings.
 Desktop and VS Code SVG output and terminal elements are checked through the
 [native test kit](https://code.claude.com/docs/en/plugins/mods/test); application
 painting and SMIL playback still need a real session.
 
 For a visual gallery generated from the production SVG functions, run
 `node scripts/preview.mjs` with Node 24. It writes `docs/previews/index.html` and
-the three behavior SVGs plus `docs/previews/choreography.html`; open the HTML in a
+the three behavior SVGs plus `docs/previews/choreography.html` and
+`docs/previews/worlds.html`; open the HTML in a
 browser to inspect SMIL playback.
 The bundled Sharp package can optionally generate PNGs with `--png` when
 `CODEX_WORKSPACE_NODE_MODULES` points to the bundled Node packages directory.

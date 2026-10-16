@@ -1,6 +1,7 @@
 import type { Register } from 'claude-code'
-import { PERSONALITIES, personalitySvg, workshopSvg, kindForTool, performanceFor, propSvg, workStation, flourishInterval, flourishSvg, FLOURISH_MS, MOTION_CSS, CUE_MS, cueLabel, cueSvg, actionBeat, actionSvg, actionPose, duetBeat, duetSvg, DUET_MS } from './theater.ts'
+import { PERSONALITIES, personalitySvg, kindForTool, performanceFor, propSvg, flourishInterval, flourishSvg, FLOURISH_MS, MOTION_CSS, CUE_MS, cueLabel, cueSvg, actionBeat, actionSvg, actionPose, duetBeat, duetSvg, DUET_MS } from './theater.ts'
 import type { Personality, Behavior, Liveliness, WorkKind, SceneCue, ActionSequence, DuetKind } from './theater.ts'
+import { hasScenePlaces, scenePlace, sceneAction, sceneObjectsSvg } from './worlds.ts'
 
 type AgentRow = { id: string; description: string; type: string; status: string }
 
@@ -14,9 +15,9 @@ type Avatar = {
   skin: string
   personality: Personality
   workKind: WorkKind
+  stationKind: WorkKind
   actionSequence: number
   actionCounts: Partial<Record<WorkKind, number>>
-  routeLoop: boolean
   arrived: boolean
   flourishAt: number | null
   phase: 'planning' | 'thinking' | 'replying' | 'tool'
@@ -47,13 +48,12 @@ type Avatar = {
   // where the robot stands when idle, and the walk it is on while working
   restX: number
   seed: number
-  epoch: number
   pathStart: number
   segs: Seg[]
   total: number
 }
 
-const VERSION = '0.7.0'
+const VERSION = '0.8.0'
 const COLORS = ['#ff8a1f', '#37c871', '#b45cff', '#2fa8ff', '#ffd23f', '#ff5c7a', '#e6e6e6']
 const LINGER_MS = 15000
 const MOOD_MS = 5000
@@ -68,7 +68,6 @@ const B = '█'
 let W = 760
 let H = 100
 let GY = 86
-const PAUSE = 1.8
 const SPEED = 40
 
 const rng = (seed: number) => {
@@ -82,41 +81,22 @@ const rng = (seed: number) => {
   }
 }
 
-// A looping walk: stand still at a point (PAUSE s), walk to the next, and so on.
+// Every world has an actual destination, never an unbounded working walk.
 const makePath = (a: Avatar) => {
   a.arrived = false
-  a.routeLoop = THEME !== 'workshop'
-  if (!a.routeLoop) {
-    const destination = workStation(a.workKind, W, a.seed).x
-    const pace = a.personality.pace * (BEHAVIOR === 'chaotic' ? 1.3 : BEHAVIOR === 'adventure' ? 1.1 : 0.9)
-    const duration = Math.min(2.2, Math.max(0.8, Math.abs(destination - a.restX) / (SPEED * pace)))
-    a.segs = [{ t0: 0, t1: duration, from: a.restX, to: destination }]
-    a.total = duration
-    return
-  }
-  const r = rng(a.seed * 7919 + a.epoch * 104729)
-  const spots = THEMES[THEME]?.anchors?.() ?? []
-  const next = () => (spots.length ? (spots[Math.floor(r() * spots.length)] as number) : 40 + r() * (W - 80))
-  const pts = [Math.min(a.restX, W - 40), ...Array.from({ length: 4 }, next)]
-  const segs: Seg[] = []
-  let t = 0
-  pts.forEach((p, i) => {
-    const q = pts[(i + 1) % pts.length] ?? p
-    const walk = Math.max(1.2, Math.abs(q - p) / SPEED)
-    segs.push({ t0: t, t1: t + PAUSE, from: p, to: p })
-    segs.push({ t0: t + PAUSE, t1: t + PAUSE + walk, from: p, to: q })
-    t += PAUSE + walk
-  })
-  a.segs = segs
-  a.total = t
+  const destination = scenePlace(THEME, a.stationKind, W, a.seed).actorX
+  const pace = a.personality.pace * (BEHAVIOR === 'chaotic' ? 1.3 : BEHAVIOR === 'adventure' ? 1.1 : 0.9)
+  const duration = Math.abs(destination - a.restX) < 1 ? 0 : Math.min(2.2, Math.max(0.8, Math.abs(destination - a.restX) / (SPEED * pace)))
+  a.segs = [{ t0: 0, t1: duration, from: a.restX, to: destination }]
+  a.total = duration
 }
 
 const posAt = (a: Avatar, sec: number) => {
-  const t = a.total > 0 ? a.routeLoop ? sec % a.total : Math.max(0, Math.min(sec, a.total)) : 0
+  const t = a.total > 0 ? Math.max(0, Math.min(sec, a.total)) : 0
   for (const s of a.segs) {
     if (t >= s.t0 && t < s.t1) return s.t1 === s.t0 ? s.to : s.from + ((s.to - s.from) * (t - s.t0)) / (s.t1 - s.t0)
   }
-  return !a.routeLoop && a.segs.length ? a.segs[a.segs.length - 1]!.to : a.restX
+  return a.segs.length ? a.segs[a.segs.length - 1]!.to : a.restX
 }
 
 const startWork = (a: Avatar, now: number) => {
@@ -126,7 +106,6 @@ const startWork = (a: Avatar, now: number) => {
   a.isWorking = true
   a.mood = ''
   a.doneAt = 0
-  a.epoch += 1
   a.pathStart = now
   makePath(a)
 }
@@ -142,10 +121,14 @@ const stopWork = (a: Avatar, now: number, isWaiting = false) => {
 }
 
 const setWorkKind = (a: Avatar, kind: WorkKind, now: number) => {
-  const reroute = a.isWorking && a.workKind !== kind && THEME === 'workshop'
+  // A real result finishes its visual action at the object before thinking
+  // moves the actor elsewhere. Actual work status changes immediately.
+  const stationKind = kind === 'think' && actionBeat(a.choreography, a.personality, now) ? a.choreography!.kind : kind
+  const reroute = a.isWorking && a.stationKind !== stationKind
   if (reroute) a.restX = posAt(a, (now - a.pathStart) / 1000)
   a.actionSequence = a.workKind === kind ? a.actionSequence : 0
   a.workKind = kind
+  a.stationKind = stationKind
   if (reroute) {
     a.pathStart = now
     makePath(a)
@@ -487,16 +470,22 @@ const withEffects = (a: Avatar, body: string, now: number) => {
 }
 
 const agentSvg = (a: Avatar, now: number, compact = false) => {
-  const arrived = a.isWorking && !a.routeLoop && now - a.pathStart >= a.total * 1000
+  const arrived = a.isWorking && now - a.pathStart >= a.total * 1000
   const performance = performanceFor(a.waiting || a.permissionTokens.size ? 'wait' : a.isWorking ? a.workKind : 'rest', BEHAVIOR, a.personality, a.actionSequence)
   const meeting = a.talk !== null && now - a.talk.at < TALK_MS
   const duetStage = meeting ? duetBeat(a.talk!.kind, a.talk!.role, a.personality, a.talk!.at, now)?.stage : undefined
   const moving = meeting ? duetStage === 0 || duetStage === 3 : a.isWorking && !arrived
   const beat = !a.waiting && !a.permissionTokens.size && !meeting && actionBeat(a.choreography, a.personality, now)
-  const body = `<g transform="translate(${-7 * U} ${GY - 10 * U})">${robotBody(SKINS[a.skin] ?? SKINS['robot']!, a.color, a.isWorking, a.mood, moving)}</g>`
+  const context = contextualAction(a, now)
+  const place = scenePlace(THEME, a.stationKind, W, a.seed)
+  const seated = arrived && !meeting && place.place?.shape === 'sofa'
+  const body = `<g transform="translate(${-7 * U} ${GY - 10 * U - (seated ? 5 : 0)})">${robotBody(SKINS[a.skin] ?? SKINS['robot']!, a.color, a.isWorking, a.mood, moving)}</g>`
+  const reach = arrived && beat && THEME !== 'workshop'
+    ? `<title>Interaction: ${context!.label}</title><path d="M0 ${GY - 17}l${(place.x - posAt(a, (now - a.pathStart) / 1000)).toFixed(1)} -7" stroke="${a.skin === 'anime' ? '#ffd9b8' : a.color}" stroke-width="4"/>` : ''
   const inner = `<title>${esc(a.name)} — ${a.personality.title}: ${a.isWorking ? esc(bubbleText(a)) : esc(moodLabel(a) || 'idle')}</title><rect x="${-7 * U}" y="${GY}" width="${14 * U}" height="${U}" fill="#888" opacity="0.4" shape-rendering="crispEdges"/>
-${arrived ? `<title>at the ${workStation(a.workKind, W, a.seed).title}</title>` : ''}
-${personalitySvg(a.personality, (beat ? actionPose(body, a.choreography, a.personality, GY, now, LIVELINESS) : body) + (meeting ? '' : beat ? actionSvg(a.choreography!, a.personality, GY, a.skin === 'anime' ? '#ffd9b8' : a.color, now, BEHAVIOR, LIVELINESS) : propSvg(performance, GY, a.skin === 'anime' ? '#ffd9b8' : a.color, now, BEHAVIOR, LIVELINESS)), GY, now, BEHAVIOR, LIVELINESS)}
+${arrived ? `<title>at the ${place.title}</title>` : ''}
+${reach}
+${personalitySvg(a.personality, (beat ? actionPose(body, a.choreography, a.personality, GY, now, LIVELINESS) : body) + (meeting ? '' : beat ? actionSvg(a.choreography!, a.personality, GY, a.skin === 'anime' ? '#ffd9b8' : a.color, now, BEHAVIOR, LIVELINESS, context ?? undefined) : propSvg(performance, GY, a.skin === 'anime' ? '#ffd9b8' : a.color, now, BEHAVIOR, LIVELINESS)), GY, now, BEHAVIOR, LIVELINESS)}
 ${flourishSvg(a.personality, GY, a.flourishAt, now, BEHAVIOR, LIVELINESS)}
 ${meeting ? '' : cueSvg(a.cue, GY, now, LIVELINESS)}
 ${tagSvg(a, compact)}${meeting ? talkBubbles(a, now) : ''}`
@@ -505,7 +494,7 @@ ${tagSvg(a, compact)}${meeting ? talkBubbles(a, now) : ''}`
   if (!a.isWorking) return `<g transform="translate(${Math.round(a.restX)} 0)">${withEffects(a, inner, now)}</g>`
   if (arrived) return `<g transform="translate(${posAt(a, (now - a.pathStart) / 1000).toFixed(1)} 0)">${withEffects(a, inner, now)}</g>`
 
-  const sec = a.routeLoop ? ((now - a.pathStart) / 1000) % a.total : Math.max(0, (now - a.pathStart) / 1000)
+  const sec = Math.max(0, (now - a.pathStart) / 1000)
   const values: string[] = []
   const times: string[] = []
   a.segs.forEach((s, i) => {
@@ -516,8 +505,15 @@ ${tagSvg(a, compact)}${meeting ? talkBubbles(a, now) : ''}`
     values.push(`${s.to.toFixed(1)} 0`)
     times.push((s.t1 / a.total).toFixed(4))
   })
-  const walk = `<animateTransform attributeName="transform" type="translate" values="${values.join(';')}" keyTimes="${times.join(';')}" dur="${a.total.toFixed(2)}s" begin="-${sec.toFixed(2)}s" ${a.routeLoop ? 'repeatCount="indefinite"' : 'fill="freeze"'}/>`
+  const walk = `<animateTransform attributeName="transform" type="translate" values="${values.join(';')}" keyTimes="${times.join(';')}" dur="${a.total.toFixed(2)}s" begin="-${sec.toFixed(2)}s" fill="freeze"/>`
   return `<g transform="translate(${posAt(a, (now - a.pathStart) / 1000).toFixed(1)} 0)">${walk}${withEffects(a, inner, now)}</g>`
+}
+
+const contextualAction = (a: Avatar, now: number) => {
+  const beat = sceneAction(THEME, a.choreography, a.personality, now, BEHAVIOR)
+  if (!beat) return null
+  return THEME !== 'workshop' && a.isWorking && now - a.pathStart < a.total * 1000
+    ? { ...beat, label: `approaching the ${scenePlace(THEME, a.stationKind, W, a.seed).title}` } : beat
 }
 
 const stageLabel = (a: Avatar, now: number) => {
@@ -527,7 +523,7 @@ const stageLabel = (a: Avatar, now: number) => {
     const beat = duetBeat(t.kind, t.role, a.personality, t.at, now)
     if (beat) return `${beat.title}: ${beat.gesture}`
   }
-  return actionBeat(a.choreography, a.personality, now)?.label ?? ''
+  return contextualAction(a, now)?.label ?? ''
 }
 
 // Scenery follows the chosen skin (a mixed party gets the plain meadow).
@@ -537,9 +533,6 @@ type Theme = {
   cloud: string
   decor: (r: () => number, x: number) => string
   extra?: (now: number) => string
-  // a fixed arrangement drawn instead of random decor, and the spots agents like to walk to
-  layout?: (now: number) => string
-  anchors?: () => number[]
   noClouds?: boolean
 }
 
@@ -578,12 +571,6 @@ const stars = (now: number, n: number, seed: number, maxY: number) => {
   return s
 }
 
-const officeDesks = () => {
-  const xs: number[] = []
-  for (let x = 60; x < W - 130; x += 130) xs.push(x)
-  return xs
-}
-
 const THEMES: Record<string, Theme> = {
   workshop: {
     sky: ['#292b30', '#474039'],
@@ -591,7 +578,6 @@ const THEMES: Record<string, Theme> = {
     cloud: '#b1b4a3',
     noClouds: true,
     decor: () => '',
-    layout: now => workshopSvg(W, GY, now),
   },
   meadow: {
     sky: ['#6fb1e6', '#d8f0fb'],
@@ -763,31 +749,6 @@ const THEMES: Record<string, Theme> = {
     cloud: '#ffffff',
     noClouds: true,
     decor: () => '',
-    anchors: () => officeDesks().map(d => d - 7 * U),
-    layout: now => {
-      let s = ''
-      officeDesks().forEach((dx, i) => {
-        const flicker = [1.3, 1.9, 2.4, 1.1][i % 4] as number
-        // desk, monitor with a flickering screen, keyboard and a mug
-        s += rect(dx, GY - 4 * U, 12 * U, U, '#8b6b4a') + rect(dx + U, GY - 3 * U, U, 3 * U, '#6b4f36') + rect(dx + 10 * U, GY - 3 * U, U, 3 * U, '#6b4f36')
-        s += rect(dx + 3 * U, GY - 10 * U, 7 * U, 5 * U, '#2b2f3a') + rect(dx + 6 * U, GY - 5 * U, U, U, '#2b2f3a')
-        s += `<rect x="${dx + 4 * U}" y="${GY - 9 * U}" width="${5 * U}" height="${3 * U}" fill="#5fe0ff"><animate attributeName="opacity" values="1;0.55;0.9;0.7;1" dur="${flicker}s" repeatCount="indefinite"/></rect>`
-        s += rect(dx + 4 * U, GY - 8 * U, 3 * U, 2, '#2b6f86') + rect(dx + 4 * U, GY - 7 * U, 4 * U, 2, '#2b6f86')
-        s += rect(dx + 4 * U, GY - 5 * U, 4 * U, 2, '#c9ced6') + rect(dx + 10 * U - 1, GY - 6 * U, U, 2 * U, '#e8e8e8')
-      })
-      // plants and a water cooler between the desks
-      const xs = officeDesks()
-      xs.forEach((dx, i) => {
-        const gx = dx + 12 * U + 4 * U
-        if (gx > W - 20) return
-        if (i % 2 === 0) {
-          s += rect(gx, GY - 2 * U, 3 * U, 2 * U, '#a8603a') + rect(gx, GY - 5 * U, U, 3 * U, '#3f9a4a') + rect(gx + U, GY - 6 * U, U, 4 * U, '#4fb35a') + rect(gx + 2 * U, GY - 4 * U, U, 2 * U, '#3f9a4a')
-        } else {
-          s += rect(gx, GY - 5 * U, 3 * U, 3 * U, '#9fd8ff') + rect(gx, GY - 2 * U, 3 * U, 2 * U, '#e8edf3') + rect(gx + U, GY - 3 * U, U, U, '#5fa8d8')
-        }
-      })
-      return s
-    },
     extra: now => {
       if (!SKY) return ''
       // windows and a wall clock
@@ -925,12 +886,20 @@ let SKY = false
 const AUTO_SCENE: Record<string, string> = { robot: 'meadow', cat: 'home', dragon: 'lava', anime: 'sakura' }
 
 // Scenery on the ground line, the same every draw (seeded), plus drifting clouds.
-const scenery = (now: number) => {
+const scenery = (now: number, all: Avatar[]) => {
   const t = THEMES[THEME] ?? (THEMES['meadow'] as Theme)
   const r = rng(4242)
-  let s = `<g shape-rendering="crispEdges"><rect x="0" y="${GY + U}" width="${W}" height="${U}" fill="${t.ground[0]}" opacity="0.55"/><rect x="0" y="${GY + 2 * U}" width="${W}" height="${U}" fill="${t.ground[1]}" opacity="0.4"/>`
-  if (t.layout) {
-    s += t.layout(now)
+  let s = (THEME === 'city' && t.extra ? t.extra(now) : '') + `<g shape-rendering="crispEdges"><rect x="0" y="${GY + U}" width="${W}" height="${U}" fill="${t.ground[0]}" opacity="0.55"/><rect x="0" y="${GY + 2 * U}" width="${W}" height="${U}" fill="${t.ground[1]}" opacity="0.4"/>`
+  if (hasScenePlaces(THEME)) {
+    if (THEME !== 'workshop' && THEME !== 'office') {
+      for (const fraction of W >= 620 ? [0.025,0.26,0.50,0.74,0.96] : [0.025]) s += t.decor(r, Math.min(W - 35, Math.round(W * fraction)))
+    }
+    const uses = all.flatMap(a => {
+      const beat = contextualAction(a, now)
+      if (!beat || a.talk || a.waiting || a.permissionTokens.size || !a.isWorking || now - a.pathStart < a.total * 1000) return []
+      return [{ index: scenePlace(THEME, a.stationKind, W, a.seed).index, label: beat.label, closing: a.choreography!.endedAt !== undefined, failed: beat.failed, period: a.personality.period }]
+    })
+    s += sceneObjectsSvg(THEME, W, GY, now, uses, LIVELINESS)
   } else {
     const n = Math.round(W / 26)
     for (let i = 0; i < n; i++) {
@@ -946,7 +915,7 @@ const scenery = (now: number) => {
     const phase = ((now / 1000 + i * 37) % dur).toFixed(1)
     s += `<g class="cl" shape-rendering="crispEdges" fill="${t.cloud}" opacity="0.45"><g><animateTransform attributeName="transform" type="translate" values="-60 ${y};${W + 20} ${y}" dur="${dur}s" begin="-${phase}s" repeatCount="indefinite"/><rect x="6" y="6" width="36" height="6"/><rect x="0" y="12" width="48" height="6"/><rect x="12" y="0" width="18" height="6"/></g></g>`
   }
-  return s + (t.extra ? t.extra(now) : '')
+  return s + (THEME !== 'city' && t.extra ? t.extra(now) : '')
 }
 
 const sky = () => {
@@ -1014,7 +983,7 @@ const celebration = (now: number) => {
 
 const sceneSvg = (all: Avatar[], now: number) => `<svg xmlns="http://www.w3.org/2000/svg" class="${LOOK}" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}"><style>${LOOK_CSS}${MOTION_CSS}</style>
 ${sky()}
-${scenery(now)}
+${scenery(now, all)}
 ${all.map(a => agentSvg(a, now, W / Math.max(1, all.length) < 115)).join('')}
 ${celebration(now)}
 </svg>`
@@ -1048,7 +1017,7 @@ export const register: Register = (on, options) => {
   LIVELINESS = ['quiet', 'normal', 'lively'].includes(String(options['liveliness'])) ? options['liveliness'] as Liveliness : 'normal'
   const scene = String(options['scene'] ?? 'auto')
   THEME = THEMES[scene] ? scene : (AUTO_SCENE[choice] ?? 'meadow')
-  H = THEME === 'workshop' ? 156 : 100
+  H = 156
   GY = H - 14
   SKY = options['sky'] === 'filled'
   const agents = new Map<string, Avatar>()
@@ -1081,9 +1050,9 @@ export const register: Register = (on, options) => {
       skin,
       personality: PERSONALITIES[(spawned - 1) % PERSONALITIES.length]!,
       workKind: 'plan',
+      stationKind: 'plan',
       actionSequence: 0,
       actionCounts: {},
-      routeLoop: true,
       arrived: false,
       flourishAt: null,
       phase: 'planning',
@@ -1100,7 +1069,6 @@ export const register: Register = (on, options) => {
       leaveAt: 0,
       restX: 50 + ((spawned * 0.618034) % 1) * (W - 100),
       seed: spawned,
-      epoch: 0,
       pathStart: 0,
       segs: [],
       total: 0,
@@ -1255,6 +1223,10 @@ export const register: Register = (on, options) => {
         changed = true
       }
       for (const a of [mainAv, ...agents.values()]) {
+        if (a.isWorking && a.stationKind !== a.workKind && !actionBeat(a.choreography, a.personality, now)) {
+          setWorkKind(a, a.workKind, now)
+          changed = true
+        }
         const label = (actionBeat(a.choreography, a.personality, now)?.label ?? '')
           + (a.talk ? duetBeat(a.talk.kind, a.talk.role, a.personality, a.talk.at, now)?.gesture ?? '' : '')
         if (label !== a.beatLabel) { a.beatLabel = label; changed = true }
@@ -1263,7 +1235,7 @@ export const register: Register = (on, options) => {
           a.flourishAt = null
           changed = true
         }
-        if (a.isWorking && !a.routeLoop && !a.arrived && now - a.pathStart >= a.total * 1000) {
+        if (a.isWorking && !a.arrived && now - a.pathStart >= a.total * 1000) {
           a.arrived = true
           changed = true
         }
@@ -1485,7 +1457,13 @@ export const register: Register = (on, options) => {
         a.phase = pending ? 'tool' : 'thinking'
         setWorkKind(a, pending?.kind ?? 'think', finishedAt)
         if (pending) a.actionSequence = pending.sequence
-        if (finished) finished.choreography.endedAt = finishedAt
+        if (finished) {
+          finished.choreography.endedAt = finishedAt
+          // A sub-frame result must not expire while the actor is still walking
+          // to its object. This is visual time only; the tool result is returned
+          // immediately and the real activity has already changed to thinking.
+          if (THEME !== 'workshop' && !pending) finished.choreography.settledAt = Math.max(finishedAt, a.pathStart + a.total * 1000)
+        }
         a.choreography = pending?.choreography ?? finished?.choreography ?? null
         if (!pending && finished?.choreography.failed) inviteIdleTeammate(a, 'trouble', finishedAt)
         $.ui.invalidate('ui.render')
@@ -1635,7 +1613,6 @@ export const register: Register = (on, options) => {
       for (const a of [mainAv, ...agents.values()]) {
         a.restX = Math.min(a.isWorking ? posAt(a, (now - a.pathStart) / 1000) : a.restX, W - 40)
         if (a.isWorking) {
-          a.epoch += 1
           a.pathStart = now
           makePath(a)
         }

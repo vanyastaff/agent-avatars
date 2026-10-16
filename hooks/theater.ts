@@ -18,7 +18,7 @@ export type Performance = { prop: Prop; description: string; kind: WorkKind }
 
 // A tool owns its choreography. Time may advance its working beats, but only
 // the real tool result can move it into a closing beat.
-export type ActionSequence = { kind: WorkKind; variant: number; at: number; endedAt?: number; failed?: boolean }
+export type ActionSequence = { kind: WorkKind; variant: number; at: number; endedAt?: number; settledAt?: number; failed?: boolean }
 export const ACTION_END_MS = 2200
 export type DuetKind = 'welcome' | 'message' | 'trouble' | 'finished'
 export const DUET_MS = 4400
@@ -86,19 +86,21 @@ const RETURNS: Partial<Record<WorkKind, [string, string]>> = {
 export const actionBeat = (s: ActionSequence | null | undefined, p: Personality, now: number) => {
   if (!s || !ACTIONS[s.kind]) return null
   const closed = s.endedAt !== undefined
-  if (closed && now - s.endedAt! >= ACTION_END_MS) return null
+  const visualEnd = s.settledAt ?? s.endedAt
+  if (closed && now - visualEnd! >= ACTION_END_MS) return null
   const fast = closed && !s.failed && s.endedAt! - s.at < 800
-  const closingAge = closed ? now - s.endedAt! : 0
+  const closingAge = closed ? Math.max(0, now - visualEnd!) : 0
   const stage = closed ? fast && closingAge < 600 ? 1 : fast && closingAge < 1300 ? 2 : 3 : now - s.at < 800 ? 0 : now - s.at < 2200 ? 1 : 2
   const label = closed && s.failed ? 'setting the troublesome tool aside'
     : fast && stage < 3 ? RETURNS[s.kind]![stage - 1]! : ACTIONS[s.kind]![stage]!
   return { stage, label, manner: MANNER[p.id][stage === 0 ? 0 : 1], failed: !!s.failed }
 }
 
-export const actionSvg = (s: ActionSequence, p: Personality, ground: number, hand: string, now: number, mode: Behavior, liveliness: Liveliness) => {
+export const actionSvg = (s: ActionSequence, p: Personality, ground: number, hand: string, now: number, mode: Behavior, liveliness: Liveliness, context?: { label: string; prop?: Performance['prop'] }) => {
   const beat = actionBeat(s, p, now)
   if (!beat) return ''
-  const performance = performanceFor(s.kind, mode, p, s.variant)
+  const original = performanceFor(s.kind, mode, p, s.variant)
+  const performance = context?.prop ? { ...original, prop: context.prop } : original
   // Preparation reaches out, focus brings the object to eye level, sustained
   // work leaves room for a notebook, and the result puts the object down.
   const prop = beat.stage === 2 && s.kind === 'read' ? { ...performance, prop: 'notebook' as const }
@@ -110,10 +112,10 @@ export const actionSvg = (s: ActionSequence, p: Personality, ground: number, han
   if (s.kind === 'search' && beat.stage >= 1 && beat.stage < 3) detail = `<path d="M32 ${ground - 17}l3 3 5-7" fill="none" stroke="#d4bd7f" stroke-width="2"/>`
   if (s.kind === 'run' && beat.stage >= 1 && beat.stage < 3) detail = `<path d="M30 ${ground - 29}v-8h9v8" fill="none" stroke="#91b3a0" stroke-width="2"/>` + r(33, ground - 35, 3, 4, '#dfbd73')
   if (beat.failed) detail = `<path d="M23 ${ground - 32}l4 4m-4 0 4-4" stroke="#ce806a" stroke-width="2"/>`
-  const closeAge = s.endedAt === undefined ? 0 : Math.max(0, now - s.endedAt) / 1000
+  const closeAge = s.endedAt === undefined ? 0 : Math.max(0, now - (s.settledAt ?? s.endedAt)) / 1000
   const motion = beat.stage === 3 ? liveliness === 'quiet' ? '' : `<animateTransform attributeName="transform" type="translate" values="0 -9;0 5;0 5" keyTimes="0;.6;1" dur="2.2s" begin="-${closeAge.toFixed(2)}s" fill="freeze"/>`
     : amplitude ? `<animateTransform attributeName="transform" type="translate" values="0 0;${amplitude} -2;0 0" dur="${p.period}s" repeatCount="indefinite"/>` : ''
-  return `<g><title>Action: ${beat.label}; ${p.title} ${beat.manner}</title><g transform="translate(${offset[0]} ${offset[1]})"><g class="actor-motion">${motion}${propSvg(prop, ground, hand, now, mode, liveliness, beat.stage !== 3)}</g></g>${detail}</g>`
+  return `<g><title>Action: ${context?.label ?? beat.label}; ${p.title} ${beat.manner}</title><g transform="translate(${offset[0]} ${offset[1]})"><g class="actor-motion">${motion}${propSvg(prop, ground, hand, now, mode, liveliness, beat.stage !== 3)}</g></g>${detail}</g>`
 }
 
 export const actionPose = (body: string, s: ActionSequence | null | undefined, p: Personality, ground: number, now: number, liveliness: Liveliness) => {

@@ -1,13 +1,22 @@
 # Current handoff
 
+Scene environments complete locally as 0.8.0. All 14 worlds have usable objects,
+stationary work and personality-preserving actions. Actual events drive object
+feedback; fast-result postludes wait visually for arrival without delaying tools.
+74 native tests and strict validation pass. Wide/narrow production contact sheets
+inspected. See decisions/sde/scene-environments.md and reviews/scene-environments.md.
+Live application playback remains unverified; no 0.8.0 publication/install update.
+
+# Handoff history
+
+## 0.7.0 choreography
+
 Event choreography complete locally as 0.7.0. See decisions/sde/event-choreography.md
 and reviews/event-choreography.md. 54 native tests pass, strict validation passes,
 production SVG contact sheets inspected. Duets use actual spawn/delivery/error/
 completion events; tools own their stage lifetimes and preserve parallel-call
 age. Live application playback remains unverified. No 0.7.0 publication or
 installed-copy update performed.
-
-# Handoff history
 
 ## 0.6.0 publication
 

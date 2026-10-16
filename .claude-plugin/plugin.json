@@ -1,6 +1,6 @@
 {
   "name": "agent-avatars",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "description": "A pixel-art crew for Claude Code: distinct personalities, tools and workshop stations that react to real session events. Choose cozy, chaotic or adventure behavior and how lively the scene feels.",
   "author": {
     "name": "vanyastaff"
