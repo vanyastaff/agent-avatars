@@ -2,6 +2,8 @@ import type { Register } from 'claude-code'
 import { PERSONALITIES, personalitySvg, kindForTool, performanceFor, propSvg, flourishInterval, flourishSvg, FLOURISH_MS, MOTION_CSS, CUE_MS, cueLabel, cueSvg, actionBeat, actionSvg, actionPose, duetBeat, duetSvg, DUET_MS } from './theater.ts'
 import type { Personality, Behavior, Liveliness, WorkKind, SceneCue, ActionSequence, DuetKind } from './theater.ts'
 import { hasScenePlaces, scenePlace, sceneAction, sceneObjectsSvg } from './worlds.ts'
+import { hasLife, episodeFor, episodeKind, episodeSpan, lifeBeat, lifeActorSvg, lifeDuetLabel, lifeDuetSvg } from './life.ts'
+import type { Episode } from './life.ts'
 
 type AgentRow = { id: string; description: string; type: string; status: string }
 
@@ -16,6 +18,7 @@ type Avatar = {
   personality: Personality
   workKind: WorkKind
   stationKind: WorkKind
+  episode: Episode
   actionSequence: number
   actionCounts: Partial<Record<WorkKind, number>>
   arrived: boolean
@@ -53,7 +56,7 @@ type Avatar = {
   total: number
 }
 
-const VERSION = '0.8.0'
+const VERSION = '0.9.0'
 const COLORS = ['#ff8a1f', '#37c871', '#b45cff', '#2fa8ff', '#ffd23f', '#ff5c7a', '#e6e6e6']
 const LINGER_MS = 15000
 const MOOD_MS = 5000
@@ -84,7 +87,7 @@ const rng = (seed: number) => {
 // Every world has an actual destination, never an unbounded working walk.
 const makePath = (a: Avatar) => {
   a.arrived = false
-  const destination = scenePlace(THEME, a.stationKind, W, a.seed).actorX
+  const destination = scenePlace(THEME, a.stationKind, W, a.seed, a.episode).actorX
   const pace = a.personality.pace * (BEHAVIOR === 'chaotic' ? 1.3 : BEHAVIOR === 'adventure' ? 1.1 : 0.9)
   const duration = Math.abs(destination - a.restX) < 1 ? 0 : Math.min(2.2, Math.max(0.8, Math.abs(destination - a.restX) / (SPEED * pace)))
   a.segs = [{ t0: 0, t1: duration, from: a.restX, to: destination }]
@@ -100,6 +103,7 @@ const posAt = (a: Avatar, sec: number) => {
 }
 
 const startWork = (a: Avatar, now: number) => {
+  if (hasLife(THEME) && a.episode.at < 0) a.episode.at = now
   a.leaveAt = 0
   if (a.isWorking) return
   a.waiting = a.permissionTokens.size > 0
@@ -123,7 +127,7 @@ const stopWork = (a: Avatar, now: number, isWaiting = false) => {
 const setWorkKind = (a: Avatar, kind: WorkKind, now: number) => {
   // A real result finishes its visual action at the object before thinking
   // moves the actor elsewhere. Actual work status changes immediately.
-  const stationKind = kind === 'think' && actionBeat(a.choreography, a.personality, now) ? a.choreography!.kind : kind
+  const stationKind = hasLife(THEME) ? episodeKind(a.episode) : kind === 'think' && actionBeat(a.choreography, a.personality, now) ? a.choreography!.kind : kind
   const reroute = a.isWorking && a.stationKind !== stationKind
   if (reroute) a.restX = posAt(a, (now - a.pathStart) / 1000)
   a.actionSequence = a.workKind === kind ? a.actionSequence : 0
@@ -435,6 +439,7 @@ const tagSvg = (a: Avatar, compact = false) => {
 <text x="0" y="${by + 9}" text-anchor="middle" font-family="${MONO}" font-size="9" fill="#222">${esc(label)}</text>`
   }
   if (compact && a.id !== 'main') return s
+  if (hasLife(THEME)) return s // work status stays in the title/alt; life is the foreground
   if (a.isWorking) {
     s += bubble(bubbleText(a), '#222')
   } else if (moodLabel(a)) {
@@ -475,19 +480,17 @@ const agentSvg = (a: Avatar, now: number, compact = false) => {
   const meeting = a.talk !== null && now - a.talk.at < TALK_MS
   const duetStage = meeting ? duetBeat(a.talk!.kind, a.talk!.role, a.personality, a.talk!.at, now)?.stage : undefined
   const moving = meeting ? duetStage === 0 || duetStage === 3 : a.isWorking && !arrived
-  const beat = !a.waiting && !a.permissionTokens.size && !meeting && actionBeat(a.choreography, a.personality, now)
+  const lifestyle = hasLife(THEME)
+  const beat = !a.waiting && !a.permissionTokens.size && !meeting && (lifestyle ? lifeBeat(THEME,a.episode,now,LIVELINESS) : actionBeat(a.choreography, a.personality, now))
   const context = contextualAction(a, now)
-  const place = scenePlace(THEME, a.stationKind, W, a.seed)
+  const place = scenePlace(THEME, a.stationKind, W, a.seed, a.episode)
   const seated = arrived && !meeting && place.place?.shape === 'sofa'
-  const body = `<g transform="translate(${-7 * U} ${GY - 10 * U - (seated ? 5 : 0)})">${robotBody(SKINS[a.skin] ?? SKINS['robot']!, a.color, a.isWorking, a.mood, moving)}</g>`
-  const reach = arrived && beat && THEME !== 'workshop'
-    ? `<title>Interaction: ${context!.label}</title><path d="M0 ${GY - 17}l${(place.x - posAt(a, (now - a.pathStart) / 1000)).toFixed(1)} -7" stroke="${a.skin === 'anime' ? '#ffd9b8' : a.color}" stroke-width="4"/>` : ''
+  const body = `<g transform="translate(${-7 * U} ${GY - 10 * U - (seated ? 5 : 0)})">${robotBody(SKINS[a.skin] ?? SKINS['robot']!, a.color, lifestyle ? false : a.isWorking, a.mood, moving)}</g>`
   const inner = `<title>${esc(a.name)} — ${a.personality.title}: ${a.isWorking ? esc(bubbleText(a)) : esc(moodLabel(a) || 'idle')}</title><rect x="${-7 * U}" y="${GY}" width="${14 * U}" height="${U}" fill="#888" opacity="0.4" shape-rendering="crispEdges"/>
 ${arrived ? `<title>at the ${place.title}</title>` : ''}
-${reach}
-${personalitySvg(a.personality, (beat ? actionPose(body, a.choreography, a.personality, GY, now, LIVELINESS) : body) + (meeting ? '' : beat ? actionSvg(a.choreography!, a.personality, GY, a.skin === 'anime' ? '#ffd9b8' : a.color, now, BEHAVIOR, LIVELINESS, context ?? undefined) : propSvg(performance, GY, a.skin === 'anime' ? '#ffd9b8' : a.color, now, BEHAVIOR, LIVELINESS)), GY, now, BEHAVIOR, LIVELINESS)}
+${personalitySvg(a.personality, lifestyle ? lifeActorSvg(body,THEME,a.episode,a.personality,now,GY,BEHAVIOR,LIVELINESS,arrived,meeting || a.waiting || !!a.permissionTokens.size,a.cue?.kind === 'tool-error' ? 'error' : a.mood || (!a.isWorking ? 'rest' : '')) : (beat ? actionPose(body, a.choreography, a.personality, GY, now, LIVELINESS) : body) + (meeting ? '' : beat ? actionSvg(a.choreography!, a.personality, GY, a.skin === 'anime' ? '#ffd9b8' : a.color, now, BEHAVIOR, LIVELINESS, context ?? undefined) : propSvg(performance, GY, a.skin === 'anime' ? '#ffd9b8' : a.color, now, BEHAVIOR, LIVELINESS)), GY, now, BEHAVIOR, LIVELINESS)}
 ${flourishSvg(a.personality, GY, a.flourishAt, now, BEHAVIOR, LIVELINESS)}
-${meeting ? '' : cueSvg(a.cue, GY, now, LIVELINESS)}
+${meeting || lifestyle && (a.cue?.kind === 'tool-result' || a.cue?.kind === 'tool-error') ? '' : cueSvg(a.cue, GY, now, LIVELINESS)}
 ${tagSvg(a, compact)}${meeting ? talkBubbles(a, now) : ''}`
   if (meeting) return LIVELINESS === 'quiet' ? `<g transform="translate(${a.talk!.x0.toFixed(1)} 0)">${withEffects(a, inner, now)}</g>`
     : `<g class="duet-motion" transform="translate(${xOf(a, now).toFixed(1)} 0)" style="--duet-x:${a.talk!.x0.toFixed(1)}px">${meetingMove(a, now)}${withEffects(a, inner, now)}</g>`
@@ -510,6 +513,7 @@ ${tagSvg(a, compact)}${meeting ? talkBubbles(a, now) : ''}`
 }
 
 const contextualAction = (a: Avatar, now: number) => {
+  if (hasLife(THEME)) return lifeBeat(THEME,a.episode,now,LIVELINESS,a.cue?.kind === 'tool-error' ? 'error' : a.mood || (!a.isWorking ? 'rest' : ''))
   const beat = sceneAction(THEME, a.choreography, a.personality, now, BEHAVIOR)
   if (!beat) return null
   return THEME !== 'workshop' && a.isWorking && now - a.pathStart < a.total * 1000
@@ -520,11 +524,16 @@ const stageLabel = (a: Avatar, now: number) => {
   if (a.waiting || a.permissionTokens.size) return ''
   const t = a.talk
   if (t) {
+    if (hasLife(THEME)) return lifeDuetLabel(THEME,t.kind)
     const beat = duetBeat(t.kind, t.role, a.personality, t.at, now)
     if (beat) return `${beat.title}: ${beat.gesture}`
   }
   return contextualAction(a, now)?.label ?? ''
 }
+
+const visualDescription = (a: Avatar, now: number) => hasLife(THEME)
+  ? a.permissionTokens.size ? 'waiting for approval' : a.waiting ? 'waiting quietly' : stageLabel(a,now)
+  : performanceFor(a.waiting || a.permissionTokens.size ? 'wait' : a.isWorking ? a.workKind : 'rest',BEHAVIOR,a.personality,a.actionSequence).description
 
 // Scenery follows the chosen skin (a mixed party gets the plain meadow).
 type Theme = {
@@ -897,7 +906,7 @@ const scenery = (now: number, all: Avatar[]) => {
     const uses = all.flatMap(a => {
       const beat = contextualAction(a, now)
       if (!beat || a.talk || a.waiting || a.permissionTokens.size || !a.isWorking || now - a.pathStart < a.total * 1000) return []
-      return [{ index: scenePlace(THEME, a.stationKind, W, a.seed).index, label: beat.label, closing: a.choreography!.endedAt !== undefined, failed: beat.failed, period: a.personality.period }]
+      return [{ index: scenePlace(THEME, a.stationKind, W, a.seed,a.episode).index, label: beat.label, closing: hasLife(THEME) ? false : a.choreography!.endedAt !== undefined, failed: beat.failed, period: a.personality.period }]
     })
     s += sceneObjectsSvg(THEME, W, GY, now, uses, LIVELINESS)
   } else {
@@ -940,6 +949,7 @@ const xOf = (a: Avatar, now: number) => {
 const talkBubbles = (a: Avatar, now: number) => {
   const t = a.talk
   if (!t) return ''
+  if (hasLife(THEME)) return lifeDuetSvg(THEME,t.kind,a.personality,GY,t.at,now,t.role)
   return duetSvg(t.kind, t.role, a.personality, t.at, now, GY, t.toward, BEHAVIOR, LIVELINESS)
 }
 
@@ -1051,6 +1061,7 @@ export const register: Register = (on, options) => {
       personality: PERSONALITIES[(spawned - 1) % PERSONALITIES.length]!,
       workKind: 'plan',
       stationKind: 'plan',
+      episode: episodeFor(PERSONALITIES[(spawned - 1) % PERSONALITIES.length]!,0,-1),
       actionSequence: 0,
       actionCounts: {},
       arrived: false,
@@ -1091,7 +1102,7 @@ export const register: Register = (on, options) => {
     }
   }
   const canDuet = (a: Avatar) => !a.waiting && !a.permissionTokens.size && !a.leaveAt
-    && ![...a.activeTools.values()].some(t => t.kind !== 'dispatch')
+    && (hasLife(THEME) || ![...a.activeTools.values()].some(t => t.kind !== 'dispatch'))
   const startDuet = (from: Avatar, to: Avatar, kind: DuetKind, now: number) => {
     const cast = [mainAv, ...agents.values()]
     for (const a of cast) if (a.talk && now - a.talk.at >= TALK_MS) cancelDuet(a, now)
@@ -1223,11 +1234,16 @@ export const register: Register = (on, options) => {
         changed = true
       }
       for (const a of [mainAv, ...agents.values()]) {
-        if (a.isWorking && a.stationKind !== a.workKind && !actionBeat(a.choreography, a.personality, now)) {
+        if (hasLife(THEME) && a.isWorking && !a.waiting && !a.permissionTokens.size && !a.mood && !a.talk && now - a.episode.at >= episodeSpan(LIVELINESS)) {
+          a.episode = episodeFor(a.personality,a.episode.serial + 1,now)
+          setWorkKind(a,a.workKind,now)
+          changed = true
+        }
+        if (!hasLife(THEME) && a.isWorking && a.stationKind !== a.workKind && !actionBeat(a.choreography, a.personality, now)) {
           setWorkKind(a, a.workKind, now)
           changed = true
         }
-        const label = (actionBeat(a.choreography, a.personality, now)?.label ?? '')
+        const label = (contextualAction(a,now)?.label ?? '')
           + (a.talk ? duetBeat(a.talk.kind, a.talk.role, a.personality, a.talk.at, now)?.gesture ?? '' : '')
         if (label !== a.beatLabel) { a.beatLabel = label; changed = true }
         if (a.cue && a.cue.kind !== 'permission' && now - a.cue.at >= CUE_MS) { a.cue = null; changed = true }
@@ -1262,7 +1278,7 @@ export const register: Register = (on, options) => {
         }
       }
       const cast = [mainAv, ...agents.values()]
-      if (now >= nextFlourishAt && !PARTY && !cast.some(a => a.talk || a.flourishAt !== null)) {
+      if (!hasLife(THEME) && now >= nextFlourishAt && !PARTY && !cast.some(a => a.talk || a.flourishAt !== null)) {
         const ready = cast.filter(a => !a.waiting && !a.permissionTokens.size && !a.cue && !a.leaveAt && !a.mood && !actionBeat(a.choreography, a.personality, now) && (a.id === 'main' || a.isWorking))
         const actor = ready[flourishIx % Math.max(1, ready.length)]
         if (actor) {
@@ -1320,7 +1336,8 @@ export const register: Register = (on, options) => {
     } catch (err) {
       engine = `  error: ${String(err)}`
     }
-    const mine = [mainAv, ...agents.values()].map(a => `  ${a.id.slice(0, 8)}  ${a.isWorking ? 'working  ' : 'idle     '} ${a.skin}: ${a.name}${a.mood ? ' [' + a.mood + ']' : ''}${a.waiting ? ' [waiting]' : ''}${a.leaveAt ? ' (leaving)' : ''} — ${a.personality.title}, ${performanceFor(a.waiting ? 'wait' : a.isWorking ? a.workKind : 'rest', BEHAVIOR, a.personality, a.actionSequence).description}`).join('\n')
+    const now = await $.clock.now()
+    const mine = [mainAv, ...agents.values()].map(a => `  ${a.id.slice(0, 8)}  ${a.isWorking ? 'working  ' : 'idle     '} ${a.skin}: ${a.name}${a.mood ? ' [' + a.mood + ']' : ''}${a.waiting ? ' [waiting]' : ''}${a.leaveAt ? ' (leaving)' : ''} — ${a.personality.title}, ${visualDescription(a,now)}${hasLife(THEME) && a.isWorking ? '; ' + bubbleText(a) : ''}`).join('\n')
     return { text: `agent-avatars ${VERSION}, character ${choice}, scene ${THEME}, behavior ${BEHAVIOR}, liveliness ${LIVELINESS}\n\nOn the scene:\n${mine}\n\nThe session's agents:\n${engine}` }
   })
 
@@ -1387,7 +1404,7 @@ export const register: Register = (on, options) => {
     }
     let token = 0
     if (a) {
-      cancelDuet(a, now)
+      if (!hasLife(THEME)) cancelDuet(a, now)
       a.flourishAt = null
       const kind = kindForTool(e.tool)
       const sequence = a.actionCounts[kind] ?? 0
@@ -1628,7 +1645,7 @@ export const register: Register = (on, options) => {
       return (
         <Svg
           source={sceneSvg(all, now)}
-          alt={`Agents: ${all.map(a => `${a.name} (${a.personality.title}) ${a.isWorking ? bubbleText(a) : moodLabel(a) || 'idle'}: ${performanceFor(a.waiting || a.permissionTokens.size ? 'wait' : a.isWorking ? a.workKind : 'rest', BEHAVIOR, a.personality, a.actionSequence).description}${stageLabel(a, now) ? '; ' + stageLabel(a, now) : ''}${a.cue ? '; ' + cueLabel(a.cue) : ''}`).join(', ')}`}
+          alt={`Agents: ${all.map(a => `${a.name} (${a.personality.title}) ${a.isWorking ? bubbleText(a) : moodLabel(a) || 'idle'}: ${visualDescription(a,now)}${!hasLife(THEME) && stageLabel(a, now) ? '; ' + stageLabel(a, now) : ''}${a.cue ? '; ' + cueLabel(a.cue) : ''}`).join(', ')}`}
           width={W}
           height={H}
           isInteractive

@@ -1,5 +1,12 @@
 # Avatar regression repair
 
+Latest: world-life correction complete locally as 0.9.0. The workshop keeps
+tool occupations; the other 13 worlds now have personality-led pastimes, social
+scenes and ambient life. 80 native tests and strict validation pass. Production
+SVG galleries verified wide and narrow. No publication/install update; live
+application playback remains unverified. See decisions/sde/world-life.md and
+reviews/world-life.md. Earlier scene-environment job mappings are superseded.
+
 Scope: reproduce the previously identified risks through the public mod hooks,
 fix confirmed behavior defects, and retain regression tests. The user confirmed
 the register/event/render boundary; real application painting is outside it.

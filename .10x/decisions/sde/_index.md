@@ -1,5 +1,8 @@
 # SDE work
 
+- world-life: complete locally as 0.9.0; 13 worlds have personality-led leisure
+  episodes and local social scenes instead of themed jobs; 80 native tests pass.
+
 - avatar-regressions: complete; event/render regression repair and native host tests.
 - agent-theater: complete; personalities, workshop, object actions and hook-driven
   phases/reactions with cosmetic behavior/liveliness settings.

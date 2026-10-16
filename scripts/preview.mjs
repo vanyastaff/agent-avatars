@@ -13,19 +13,21 @@ if (boundary < 0) throw new Error('Cannot find the hooks/renderer boundary')
 const prefix = stripTypeScriptTypes(source.slice(0, boundary), { mode: 'strip' })
   .replaceAll("'./theater.ts'", JSON.stringify(pathToFileURL(resolve(root, 'hooks/theater.ts')).href))
   .replaceAll("'./worlds.ts'", JSON.stringify(pathToFileURL(resolve(root, 'hooks/worlds.ts')).href))
+  .replaceAll("'./life.ts'", JSON.stringify(pathToFileURL(resolve(root, 'hooks/life.ts')).href))
 const fixture = `
 export function preview(width, behavior, look, filled, mixed = false, beatAge = null, duetKind = null, duetAge = 1500, quiet = false, world = 'workshop') {
   W = width; H = 156; GY = 142; THEME = world; SKY = filled;
   BEHAVIOR = behavior; LIVELINESS = quiet ? 'quiet' : 'normal'; LOOK = look;
   const now = 120000;
   const cast = ['read', 'search', 'craft', 'run', 'plan'].map((kind, i) => {
+    const episode = episodeFor(PERSONALITIES[i], i === 1 ? 1 : 0, now - 4000);
     const a = { id: i ? 'worker-' + i : 'main', name: ['Pip', 'Mochi', 'Ember', 'Nox', 'Fern'][i],
       skin: mixed ? SKIN_IDS[i % SKIN_IDS.length] : 'robot', personality: PERSONALITIES[i],
-      color: COLORS[i], isWorking: i < 4, waiting: false, permissionTokens: new Set(), cue: null,
-      workKind: kind, stationKind: kind, phase: 'tool', actionSequence: 0, tool: ['Read','Grep','Edit','Bash',''][i],
+      color: COLORS[i], isWorking: hasLife(world) || i < 4, waiting: false, permissionTokens: new Set(), cue: null,
+      workKind: kind, stationKind: hasLife(world) ? episodeKind(episode) : kind, episode, phase: 'tool', actionSequence: 0, tool: ['Read','Grep','Edit','Bash',''][i],
       choreography: beatAge === null ? null : { kind, variant: 0, at: now - (beatAge < 0 ? 6000 : beatAge), ...(beatAge < 0 ? { endedAt: now + beatAge } : {}) },
       action: '', thought: '', mood: '', talk: null, spawnAt: 0, leaveAt: 0,
-      restX: i < 4 ? scenePlace(world, kind, W, i + 1).actorX : width - 40, seed: i + 1,
+      restX: hasLife(world) || i < 4 ? scenePlace(world, kind, W, i + 1, episode).actorX : width - 40, seed: i + 1,
       pathStart: now - 12000, segs: [], total: 0, flourishAt: i === 4 ? now - 400 : null };
     makePath(a);
     return a;
@@ -40,7 +42,7 @@ export function preview(width, behavior, look, filled, mixed = false, beatAge = 
       a.flourishAt = null;
     }
   }
-  return sceneSvg(duetKind ? cast.slice(0, 2) : world !== 'workshop' ? cast.slice(0, 4) : cast, now);
+  return sceneSvg(duetKind ? cast.slice(0, 2) : cast, now);
 }
 `
 const { preview } = await import(`data:text/javascript;base64,${Buffer.from(prefix + fixture).toString('base64')}`)

@@ -1,5 +1,15 @@
 # Current handoff
 
+World life complete locally as 0.9.0: user rejected the 0.8.0 all-world workshop
+metaphor. Only workshop maps tools to jobs. The other 13 worlds have independent
+personality-selected leisure episodes, local social reactions and new art.
+80 native tests, strict validation and diff checks pass. Both production SVG
+contact sheets inspected and confirmed. No publication/install update, and live
+Claude painting/SMIL remain unverified. See decisions/sde/world-life.md and
+reviews/world-life.md.
+
+# Previous handoff: 0.8.0 (superseded)
+
 Scene environments complete locally as 0.8.0. All 14 worlds have usable objects,
 stationary work and personality-preserving actions. Actual events drive object
 feedback; fast-result postludes wait visually for arrival without delaying tools.

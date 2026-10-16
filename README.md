@@ -2,7 +2,7 @@
 
 A [Claude Code mod](https://code.claude.com/docs/en/plugins/mods/overview) that puts a tiny pixel-art world above the prompt. The main agent and every subagent are little pixel characters (robots, cats, dragons, anime kids):
 
-- **Working:** characters plan, think, write replies, and interact with the selected world's objects. Every world has reachable reading, searching, crafting and running places; actors settle there instead of walking forever.
+- **While agents work:** the workshop acts out their real tools. Other worlds have their own life: street parties, picnics, snowballs, swimming and naps. Personalities choose different pastimes; real events bring people together, startle them or pause their play.
 - **Idle or done:** it stands still, blinks and sleeps (`z z`).
 - **Enter and exit:** a new subagent pops in with a bounce; a finished one flickers, floats up and vanishes in a puff of pixels after 15 seconds.
 
@@ -46,41 +46,48 @@ Scenes keep their own skies, ambient details and colors, and now include usable
 objects. `auto` still selects meadow for robots, home for cats, lava for dragons
 and sakura for anime characters.
 
-### Places and actions in every world
+### Life in each world
 
-Version 0.8.0 gives all 14 scenes four work places. Each row follows the same real
-events: Read/NotebookRead, search/scouting tools, Edit/Write, and command tools.
+Version 0.9.0 replaces the themed workstations from 0.8.0. Only the workshop maps
+tool categories to occupations. Everywhere else, changing Read to Edit leaves
+the current pastime intact. Actual tool status remains in SVG titles, alternative
+text, the terminal and `/avatars`; the scene foreground shows the inhabitants' lives.
 
-| Scene | Reading | Searching | Crafting | Running |
-| --- | --- | --- | --- | --- |
-| workshop | Library | Map board | Workbench | Engine |
-| meadow | Field journal | Butterfly patch | Seedling bed | Water wheel |
-| home | Reading sofa | Toy chest | Sewing table | Kitchen stove |
-| lava | Rune tablet | Crystal vein | Forge anvil | Bellows furnace |
-| sakura | Poetry stand | Koi pond | Bonsai bench | Tea hearth |
-| snow | Expedition board | Snow drift | Ice sculpture | Camp stove |
-| night | Star atlas | Observatory telescope | Lantern bench | Campfire |
-| desert | Explorer map | Dig site | Mosaic table | Oasis pump |
-| space | Star chart console | Radar dish | Repair dock | Reactor console |
-| office | Archive cabinet | Search terminal | Drafting desk | Office printer |
-| beach | Tide chart | Shell sorting tray | Sandcastle | Water pump |
-| city | News kiosk | Transit map | Repair stall | Signal cabinet |
-| ocean | Shell archive | Coral survey | Pearl bench | Air pump |
-| halloween | Spell lectern | Clue pumpkin | Potion bench | Cauldron |
+| Scene | Life and surroundings |
+| --- | --- |
+| workshop | Library, map board, workbench and engine responding to real tools |
+| meadow | Picnic, butterflies, flower crowns and a riverside swing |
+| home | Sofa lounging, toys, a pillow fort and midnight snacks |
+| lava | Warm-rock naps, crystal play, ember barbecue and a hot spring |
+| sakura | Blossom tea, koi feeding, petal dancing and wish ribbons |
+| snow | Cocoa by the fire, snowballs, a snowman and sledding |
+| night | Campfire stories, fireflies, lantern dancing and stargazing |
+| desert | Oasis cushions, dune sliding, dates and tea, a shade tent |
+| space | An orbital hammock, comet watching, moon ball and floating snacks |
+| office | Coffee breaks, paper planes, games and window naps |
+| beach | Hammock, shell hunting, sandcastle and barbecue |
+| city | Warming at a barrel fire, grilling skewers, street music and stoop gatherings |
+| ocean | Anemone beds, swimming with fish, bubble play and a sunken crown |
+| halloween | Pumpkin cushions, ghost hide-and-seek, candy and a cauldron party |
 
-Characters reach toward the object, read on the home sofa, guide fabric through
-the sewing machine, turn a wheel, tend a kettle, feed paper, carve ice or stir a
-cauldron. The object responds only while a matching actor is there and free of an
-approval wait or duet. A failed tool produces a trouble cue; it does not imply a
-failed turn or that the problem was fixed. These remain visual metaphors for
-tool kinds, never deductions from command text, model reasoning or message text.
+Each personality has a stable route of preferred activities. Dramatic likes the
+dance floor; Sleepy returns to warm, restful places; Curious explores; Shy starts
+at a sheltered spot. An episode has an approach, an activity and a closing gesture,
+then a new destination. Quiet, normal and lively change this interval to 20, 12
+and 8 seconds while the agent is active. A new tool does not restart the episode.
+Characters sharing a spot form a small gathering rather than occupying separate desks.
 
-All scenes use a 156-unit band to leave room for the objects and labels. Routes
-approach once within 2.2 seconds and stop. After a real result the actor completes
-its closing gesture at the object before moving to a thinking place; the actual
-tool status changes immediately. Fast results keep a bounded visual postlude
-after arrival, without delaying the tool. Resizing replans the approach.
-Personality, behavior presets, quiet mode and event-driven duets still apply.
+Real arrivals, delivered messages, tool errors and successful turn completions
+still trigger shared scenes, with the world's own vocabulary and personality-led
+gestures. In the city, a delivered message becomes street gossip; in the ocean,
+an exchange of bubbles. Errors startle characters; permission waits stop their
+play. Tool results and approval decisions pass through unchanged. No command or
+message content is interpreted to invent a story. Ambient fire, fish and music
+belong to the world and do not depend on a matching tool running.
+
+All scenes use a 156-unit band. Approaches take at most 2.2 seconds; resizing
+replans the route. Quiet suppresses added motion and the SVG respects reduced
+motion. Behavior still controls character movement and expressive poses.
 
 See the [all-world gallery](docs/previews/worlds.html) and the static contact
 sheets: [first seven worlds](docs/previews/worlds-1.png),
@@ -106,19 +113,22 @@ wears a satchel and investigates a box; Dramatic wears a scarf and makes a show;
 Sleepy has a nightcap and yawns; Shy wears a hood and tends a little plant.
 Personality and colour stay with the avatar when its activity changes.
 
-`behavior` changes the performance: **cozy** uses books, notebooks and warm cups;
+In the workshop, `behavior` changes the props: **cozy** uses books, notebooks and warm cups;
 **chaotic** adds upside-down books, magnets, a butterfly net and an enormous
 mallet; **adventure** uses scrolls, maps, compasses and lanterns. All skins and
 scenes can use all three behaviors. These are cosmetic roles, never instructions
 to the real agent.
 
-`liveliness` controls motion and autonomous personality moments. Quiet, normal
+In the workshop, `liveliness` controls motion and autonomous personality moments. Quiet, normal
 and lively offer a short moment every 30, 16 or 8 seconds respectively, with one
 actor performing at a time. Waiting, completion, messages and other event
 reactions take priority. Quiet reduces decorative motion; the SVG also respects
 `prefers-reduced-motion` for actor/prop transforms. Sounds remain opt-in.
 
 ### The scene follows the hooks
+
+This table describes workshop props and shared status cues. Other worlds keep
+their own pastimes and translate shared scenes into local leisure activities.
 
 | Event | Reaction |
 | --- | --- |
@@ -260,12 +270,12 @@ No Node.js packages, sign-in, or model requests are needed. Tests load the real
 hooks through `register`, stub host APIs, and advance a controlled host clock.
 They check agent retirement and resumption, main-agent activity, SVG text escaping,
 AI opt-in and throttling, and tool execution when the observer's host API fails.
-The 74-test suite also covers event-driven duets, all five personality roles,
+The native suite also covers event-driven duets, all five personality roles,
 multi-stage/fast actions, busy recipients, delivery failures, parallel-call
 continuity, interruption, resize, approval waits and old-turn result isolation.
-It additionally checks every world's reachable places and actual tool actions,
-narrow resizing, object activity only after arrival, permission/failure behavior,
-fast-result postludes and all four automatic skin-to-world mappings.
+It additionally checks every world's own life, activity continuity across tools,
+liveliness cadence, narrow resizing, world-specific social scenes, permission/error
+reactions, truthful accessible status and all four automatic skin-to-world mappings.
 Desktop and VS Code SVG output and terminal elements are checked through the
 [native test kit](https://code.claude.com/docs/en/plugins/mods/test); application
 painting and SMIL playback still need a real session.
