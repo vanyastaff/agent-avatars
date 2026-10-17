@@ -56,7 +56,7 @@ type Avatar = {
   total: number
 }
 
-const VERSION = '0.9.1'
+const VERSION = '0.10.0'
 const COLORS = ['#ff8a1f', '#37c871', '#b45cff', '#2fa8ff', '#ffd23f', '#ff5c7a', '#e6e6e6']
 const LINGER_MS = 15000
 const MOOD_MS = 5000
@@ -412,7 +412,7 @@ const robotBody = (skin: Skin, color: string, isWorking: boolean, mood = '', mov
       ? pixels(EYES_SAD, c, skin.eyeOy)
       : isWorking
     ? pixels(skin.eyesWork, c, skin.eyeOy)
-    : `<g><animateTransform attributeName="transform" type="scale" values="1 1;1 1;1 0.15;1 1" keyTimes="0;0.9;0.94;1" dur="4s" repeatCount="indefinite"/>${pixels(skin.eyesIdle, c, skin.eyeOy)}</g>`
+    : `<g>${LIVELINESS === 'quiet' ? '' : `<animateTransform attributeName="transform" type="translate" values="0 0;${-U} 0;0 0;${U} 0;0 0" keyTimes="0;0.3;0.45;0.75;0.9" dur="9s" calcMode="discrete" repeatCount="indefinite"/>`}<g><animateTransform attributeName="transform" type="scale" values="1 1;1 1;1 0.15;1 1" keyTimes="0;0.9;0.94;1" dur="4s" repeatCount="indefinite"/>${pixels(skin.eyesIdle, c, skin.eyeOy)}</g></g>`
   const legs = moving && LIVELINESS !== 'quiet'
     ? `<g>${steps('0 0;0 -3', '0.4s')}${pixels(skin.legsA, c)}</g><g>${steps('0 -3;0 0', '0.4s')}${pixels(skin.legsB, c)}</g>`
     : pixels(skin.legsStill, c)
@@ -425,6 +425,55 @@ const robotBody = (skin: Skin, color: string, isWorking: boolean, mood = '', mov
     ? `<g transform="translate(${5 * U} ${-3 * U})" fill="#ffd23f"><rect x="${U}" y="0" width="${U}" height="${3 * U}"/><rect x="0" y="${U}" width="${3 * U}" height="${U}"/><animate attributeName="opacity" values="1;0.2;1" dur="0.6s" repeatCount="indefinite"/></g>`
     : ''
   return `<g shape-rendering="crispEdges"><g class="actor-motion">${hop}<g transform="translate(0 ${7 * U})">${legs}</g>${pixels(skin.body, c)}${eyes}${spark}</g></g>`
+}
+
+// Small pixel glyphs: '#' cells of `size` units at (x, y).
+const glyph = (rows: string[], x: number, y: number, size: number, fill: string) => {
+  let out = ''
+  rows.forEach((row, j) => {
+    for (let i = 0; i < row.length; i++) if (row[i] === '#') out += `<rect x="${x + i * size}" y="${y + j * size}" width="${size}" height="${size}" fill="${fill}"/>`
+  })
+  return out
+}
+const HEART = ['.#.#.', '#####', '#####', '.###.', '..#..']
+const QUESTION = ['.###.', '#...#', '...#.', '..#..', '.....', '..#..']
+
+// How an avatar feels, beside its head: hearts when it is done, a rain cloud when
+// it failed, a bobbing question while it waits, thought bubbles while it thinks.
+// Every loop here is phased by the scene clock, so redraws never restart it.
+const moodSvg = (a: Avatar) => {
+  if (a.leaveAt) return ''
+  const quiet = LIVELINESS === 'quiet'
+  const x = 8 * U + 2
+  const head = GY - 10 * U
+  if (a.permissionTokens.size || a.waiting) {
+    const bob = quiet ? '' : `<animateTransform attributeName="transform" type="translate" values="0 0;0 -4;0 0" keyTimes="0;0.5;1" dur="1.3s" calcMode="spline" keySplines="${EASE};${EASE}" repeatCount="indefinite"/>`
+    return `<g shape-rendering="crispEdges"><g class="actor-motion">${bob}${glyph(QUESTION, x, head + 2, 2, '#2b6fd8')}</g></g>`
+  }
+  if (a.isWorking && a.phase === 'thinking' && !quiet) {
+    return `<g>${[0, 1, 2].map(i => `<circle cx="${x + 2 + i * 5}" cy="${head + 14 - i * 6}" r="${1.5 + i * 0.8}" fill="#f2f2f2" stroke="#9a9a9a" stroke-width="0.8" opacity="0"><animate attributeName="opacity" values="0;0.95;0.95;0" keyTimes="0;0.15;0.75;1" dur="1.8s" begin="${(i * 0.3).toFixed(1)}s" repeatCount="indefinite"/></circle>`).join('')}</g>`
+  }
+  if (a.isWorking) return ''
+  if (a.mood === 'happy' && !quiet) {
+    return `<g shape-rendering="crispEdges">${[0, 1, 2].map(i => `<g opacity="0"><animate attributeName="opacity" values="0;1;0" keyTimes="0;0.25;1" dur="2.4s" begin="${(i * 0.8).toFixed(1)}s" repeatCount="indefinite"/><animateTransform attributeName="transform" type="translate" values="${i * 4 - 4} 0;${i * 4 - 2 + (i % 2 ? 4 : -4)} -24" dur="2.4s" begin="${(i * 0.8).toFixed(1)}s" calcMode="spline" keyTimes="0;1" keySplines="0.2 0.6 0.4 1" repeatCount="indefinite"/>${glyph(HEART, x - 2, head + 2, 2, i === 1 ? '#ffd23f' : '#ff6fa5')}</g>`).join('')}</g>`
+  }
+  if (a.mood === 'sad') {
+    const cy = head - 4
+    const cloud = `<rect x="${x - 4}" y="${cy}" width="18" height="5" fill="#8a93a3"/><rect x="${x}" y="${cy - 3}" width="9" height="3" fill="#8a93a3"/><rect x="${x + 1}" y="${cy - 2}" width="4" height="2" fill="#a7afbd"/>`
+    const drops = quiet ? '' : [0, 1, 2].map(i => `<rect x="${x - 1 + i * 6}" y="${cy + 6}" width="1.5" height="3" fill="#6fb0ff" opacity="0"><animate attributeName="opacity" values="0.9;0.9;0" keyTimes="0;0.7;1" dur="0.8s" begin="${(i * 0.27).toFixed(2)}s" repeatCount="indefinite"/><animateTransform attributeName="transform" type="translate" values="0 0;0 12" dur="0.8s" begin="${(i * 0.27).toFixed(2)}s" calcMode="spline" keyTimes="0;1" keySplines="0.5 0 1 1" repeatCount="indefinite"/></rect>`).join('')
+    const drift = quiet ? '' : `<animateTransform attributeName="transform" type="translate" values="0 0;2 0;0 0;-2 0;0 0" dur="3s" repeatCount="indefinite"/>`
+    return `<g shape-rendering="crispEdges"><g class="actor-motion">${drift}${cloud}</g>${drops}</g>`
+  }
+  return ''
+}
+
+// The ground shadow squeezes as the feet leave the ground.
+const shadowSvg = (moving: boolean) => {
+  const w = 14 * U
+  const squash = moving && LIVELINESS !== 'quiet'
+    ? `<animate attributeName="width" values="${w};${w - 2 * U}" dur="0.4s" calcMode="discrete" repeatCount="indefinite"/><animate attributeName="x" values="${-w / 2};${-w / 2 + U}" dur="0.4s" calcMode="discrete" repeatCount="indefinite"/>`
+    : ''
+  return `<rect x="${-w / 2}" y="${GY}" width="${w}" height="${U}" fill="#888" opacity="0.4" shape-rendering="crispEdges">${squash}</rect>`
 }
 
 const tagSvg = (a: Avatar, compact = false) => {
@@ -488,12 +537,12 @@ const agentSvg = (a: Avatar, now: number, compact = false) => {
   const place = scenePlace(THEME, a.stationKind, W, a.seed, a.episode)
   const seated = arrived && !meeting && place.place?.shape === 'sofa'
   const body = `<g transform="translate(${-7 * U} ${GY - 10 * U - (seated ? 5 : 0)})">${robotBody(SKINS[a.skin] ?? SKINS['robot']!, a.color, lifestyle ? false : a.isWorking, a.mood, moving)}</g>`
-  const inner = `<title>${esc(a.name)} — ${a.personality.title}: ${a.isWorking ? esc(bubbleText(a)) : esc(moodLabel(a) || 'idle')}</title><rect x="${-7 * U}" y="${GY}" width="${14 * U}" height="${U}" fill="#888" opacity="0.4" shape-rendering="crispEdges"/>
+  const inner = `<title>${esc(a.name)} — ${a.personality.title}: ${a.isWorking ? esc(bubbleText(a)) : esc(moodLabel(a) || 'idle')}</title>${shadowSvg(moving && !seated)}
 ${arrived ? `<title>at the ${place.title}</title>` : ''}
 ${personalitySvg(a.personality, lifestyle ? lifeActorSvg(body,THEME,a.episode,a.personality,now,GY,BEHAVIOR,LIVELINESS,arrived,meeting || a.waiting || !!a.permissionTokens.size,a.cue?.kind === 'tool-error' ? 'error' : a.mood || (!a.isWorking ? 'rest' : '')) : (beat ? actionPose(body, a.choreography, a.personality, GY, now, LIVELINESS) : body) + (meeting ? '' : beat ? actionSvg(a.choreography!, a.personality, GY, a.skin === 'anime' ? '#ffd9b8' : a.color, now, BEHAVIOR, LIVELINESS, context ?? undefined) : propSvg(performance, GY, a.skin === 'anime' ? '#ffd9b8' : a.color, now, BEHAVIOR, LIVELINESS)), GY, now, BEHAVIOR, LIVELINESS)}
 ${flourishSvg(a.personality, GY, a.flourishAt, now, BEHAVIOR, LIVELINESS)}
 ${meeting || lifestyle && (a.cue?.kind === 'tool-result' || a.cue?.kind === 'tool-error') ? '' : cueSvg(a.cue, GY, now, LIVELINESS)}
-${tagSvg(a, compact)}${meeting ? talkBubbles(a, now) : ''}`
+${meeting ? '' : moodSvg(a)}${tagSvg(a, compact)}${meeting ? talkBubbles(a, now) : ''}`
   if (meeting) return LIVELINESS === 'quiet' ? `<g transform="translate(${a.talk!.x0.toFixed(1)} 0)">${withEffects(a, inner, now)}</g>`
     : `<g class="duet-motion" transform="translate(${a.talk!.x0.toFixed(1)} 0)" style="--duet-x:${a.talk!.x0.toFixed(1)}px">${meetingMove(a, now)}${withEffects(a, inner, now)}</g>`
   if (!a.isWorking) return `<g transform="translate(${Math.round(a.restX)} 0)">${withEffects(a, inner, now)}</g>`
@@ -900,6 +949,44 @@ let SKY = false
 const AUTO_SCENE: Record<string, string> = { robot: 'meadow', cat: 'home', dragon: 'lava', anime: 'sakura' }
 
 // Scenery on the ground line, the same every draw (seeded), plus drifting clouds.
+// Small passers-by that make a world feel inhabited: shooting stars at night,
+// butterflies over grass, dust in the workshop light. Seeded, so the markup of an
+// unchanged scene stays the same; their loops are phased by the scene clock.
+const ambient = () => {
+  if (LIVELINESS === 'quiet') return ''
+  const r = rng(606)
+  const many = LIVELINESS === 'lively'
+  let s = ''
+  if (THEME === 'night' || THEME === 'space' || THEME === 'halloween' || THEME === 'city') {
+    for (let i = 0; i < (many ? 3 : 2); i++) {
+      const x0 = Math.round(W * 0.3 + r() * W * 0.6)
+      const y0 = Math.round(4 + r() * 16)
+      const dur = (9 + i * 5 + r() * 4).toFixed(1)
+      const kt = 'keyTimes="0;0.86;0.93;1"'
+      s += `<g opacity="0"><animate attributeName="opacity" values="0;0;1;0" ${kt} dur="${dur}s" begin="${i * 3}s" repeatCount="indefinite"/><animateTransform attributeName="transform" type="translate" values="${x0} ${y0};${x0} ${y0};${x0 - 80} ${y0 + 30};${x0 - 80} ${y0 + 30}" ${kt} dur="${dur}s" begin="${i * 3}s" repeatCount="indefinite"/><rect x="0" y="0" width="2" height="2" fill="#ffffff"/><rect x="3" y="-1" width="3" height="1" fill="#ffffff" opacity="0.7"/><rect x="7" y="-3" width="4" height="1" fill="#ffffff" opacity="0.4"/><rect x="12" y="-5" width="5" height="1" fill="#ffffff" opacity="0.2"/></g>`
+    }
+  }
+  if (THEME === 'meadow' || THEME === 'sakura' || THEME === 'home' || THEME === 'desert') {
+    const wings = THEME === 'sakura' ? ['#ffffff', '#ffd6e6'] : THEME === 'desert' ? ['#fff1d0', '#ffd23f'] : ['#ffd23f', '#ff9ac1', '#7fd4ff']
+    for (let i = 0; i < (many ? 3 : 2); i++) {
+      const pts = Array.from({ length: 4 }, () => `${Math.round(20 + r() * (W - 40))} ${Math.round(GY - 70 + r() * 50)}`)
+      const path = [...pts, pts[0]].join(';')
+      const color = pick(r, wings)
+      s += `<g><animateTransform attributeName="transform" type="translate" values="${path}" dur="${(16 + r() * 10).toFixed(1)}s" calcMode="spline" keyTimes="0;0.25;0.5;0.75;1" keySplines="${EASE};${EASE};${EASE};${EASE}" repeatCount="indefinite"/><g><animateTransform attributeName="transform" type="scale" values="1 1;0.25 1;1 1" dur="0.32s" repeatCount="indefinite"/><rect x="-4" y="-3" width="3" height="3" fill="${color}"/><rect x="1" y="-3" width="3" height="3" fill="${color}"/><rect x="-3" y="0" width="2" height="2" fill="${color}" opacity="0.8"/><rect x="1" y="0" width="2" height="2" fill="${color}" opacity="0.8"/></g><rect x="-0.5" y="-3" width="1" height="5" fill="#3a2f2a"/></g>`
+    }
+  }
+  if (THEME === 'workshop' || THEME === 'office') {
+    for (let i = 0; i < (many ? 12 : 8); i++) {
+      const x = Math.round(r() * W)
+      const y = Math.round(GY - 10 - r() * 50)
+      const dur = (7 + r() * 7).toFixed(1)
+      const begin = (r() * 7).toFixed(1)
+      s += `<rect x="${x}" y="${y}" width="2" height="2" fill="#ffe9b0" opacity="0"><animate attributeName="opacity" values="0;0.55;0" dur="${dur}s" begin="${begin}s" repeatCount="indefinite"/><animateTransform attributeName="transform" type="translate" values="0 0;${Math.round(r() * 16 - 8)} -${10 + Math.round(r() * 14)}" dur="${dur}s" begin="${begin}s" repeatCount="indefinite"/></rect>`
+    }
+  }
+  return s ? `<g shape-rendering="crispEdges">${s}</g>` : ''
+}
+
 const scenery = (now: number, all: Avatar[]) => {
   const t = THEMES[THEME] ?? (THEMES['meadow'] as Theme)
   const r = rng(4242)
@@ -929,7 +1016,7 @@ const scenery = (now: number, all: Avatar[]) => {
     const phase = ((now / 1000 + i * 37) % dur).toFixed(1)
     s += `<g class="cl" shape-rendering="crispEdges" fill="${t.cloud}" opacity="0.45"><g><animateTransform attributeName="transform" type="translate" values="-60 ${y};${W + 20} ${y}" dur="${dur}s" begin="-${phase}s" repeatCount="indefinite"/><rect x="6" y="6" width="36" height="6"/><rect x="0" y="12" width="48" height="6"/><rect x="12" y="0" width="18" height="6"/></g></g>`
   }
-  return s + (THEME !== 'city' && t.extra ? t.extra(now) : '')
+  return s + (THEME !== 'city' && t.extra ? t.extra(now) : '') + ambient()
 }
 
 const sky = () => {

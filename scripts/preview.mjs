@@ -15,7 +15,7 @@ const prefix = stripTypeScriptTypes(source.slice(0, boundary), { mode: 'strip' }
   .replaceAll("'./worlds.ts'", JSON.stringify(pathToFileURL(resolve(root, 'hooks/worlds.ts')).href))
   .replaceAll("'./life.ts'", JSON.stringify(pathToFileURL(resolve(root, 'hooks/life.ts')).href))
 const fixture = `
-export function preview(width, behavior, look, filled, mixed = false, beatAge = null, duetKind = null, duetAge = 1500, quiet = false, world = 'workshop') {
+export function preview(width, behavior, look, filled, mixed = false, beatAge = null, duetKind = null, duetAge = 1500, quiet = false, world = 'workshop', moods = false) {
   W = width; H = 156; GY = 142; THEME = world; SKY = filled;
   BEHAVIOR = behavior; LIVELINESS = quiet ? 'quiet' : 'normal'; LOOK = look;
   const now = 120000;
@@ -42,6 +42,12 @@ export function preview(width, behavior, look, filled, mixed = false, beatAge = 
       a.flourishAt = null;
     }
   }
+  if (moods) {
+    Object.assign(cast[0], { isWorking: false, mood: 'happy' });
+    Object.assign(cast[1], { isWorking: false, mood: 'sad' });
+    Object.assign(cast[2], { isWorking: false, waiting: true });
+    Object.assign(cast[3], { phase: 'thinking', tool: '' });
+  }
   return sceneSvg(duetKind ? cast.slice(0, 2) : cast, now);
 }
 `
@@ -60,6 +66,8 @@ const storyPanels = [
   ['Message handoff', preview(751, 'adventure', 'dark', true, true, null, 'message')],
   ['Tool trouble', preview(751, 'chaotic', 'dark', true, true, null, 'trouble', 2600)],
   ['A finished task', preview(751, 'cozy', 'dark', true, true, null, 'finished', 2600)],
+  ['Moods: done, failed, waiting, thinking', preview(751, 'cozy', 'dark', true, false, null, null, 1500, false, 'night', true)],
+  ['Moods in the meadow', preview(751, 'cozy', 'dark', true, true, null, null, 1500, false, 'meadow', true)],
   ['Narrow, light, quiet handoff', preview(360, 'cozy', 'light', false, true, null, 'message', 2600, true)],
 ]
 const storyHtml = `<!doctype html><meta charset="utf-8"><title>Agent choreography</title><style>body{margin:24px;background:#22272d;color:#d9dbc9;font:14px system-ui}section{max-width:751px;margin:24px auto}h2{font-size:16px}svg{max-width:100%;height:auto}section:last-child{background:#f0eee5;color:#4b554f;padding:16px}</style>${storyPanels.map(([title, svg]) => `<section><h2>${title}</h2>${svg}</section>`).join('')}`
@@ -101,6 +109,6 @@ if (process.argv.includes('--png')) {
 if (process.argv.includes('--serve')) {
   createServer((req, res) => {
     res.setHeader('Content-Type', 'text/html; charset=utf-8')
-    res.end(html)
+    res.end(req.url === '/choreography' ? storyHtml : req.url === '/worlds' ? worldPanels.map(([name, wide]) => `<h2>${name}</h2>${wide}`).join('') : html)
   }).listen(8941, '127.0.0.1', () => console.log('http://127.0.0.1:8941'))
 }
