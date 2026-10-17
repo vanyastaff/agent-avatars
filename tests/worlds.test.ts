@@ -1,5 +1,5 @@
 import { expect, mock, test } from 'claude-code/testing'
-import { heldTools } from './host.ts'
+import { heldTools, liveSvg } from './host.ts'
 
 const BAND = { plugin: 'agent-avatars', component: 'AbovePrompt', surface: 'desktop', props: { isWorking: true, bodyColumns: 95 } } as const
 
@@ -28,15 +28,15 @@ for (const [scene, first, next, place] of [
     const start = heldTools($, on, clock)
     await $.session.start({ surface: 'desktop', isInteractive: true, cwd: '/work' })
     const ui = await $.ui.mount(BAND)
-    const source = async () => String((await ui.find({ type: 'Svg' }))?.props.source)
+    const source = async () => String((await liveSvg(ui))?.props.source)
     expect(await source()).toContain(`Place: ${place}`)
     const finish = await start({ tool: 'Bash', command: 'build' })
     await clock.advance(3000)
     expect(await source()).toContain(`Life: ${first}`)
-    expect(await source()).toContain('running…')
+    expect(String((await liveSvg(ui))?.props.alt)).toContain('running…')
     await ui.redraw({ isWorking: true, bodyColumns: 45 })
     await clock.advance(3000)
-    expect((await ui.find({ type: 'Svg' }))?.props.width).toBe(360)
+    expect((await liveSvg(ui))?.props.width).toBe(360)
     expect(await source()).toContain(`Life: ${first}`)
     await clock.advance(9000)
     expect(await source()).toContain(`Life: ${next}`)
@@ -51,7 +51,7 @@ for (const [skin, scene, place] of [['robot','meadow','picnic blanket'], ['cat',
   test(`auto still selects ${scene} life for ${skin}`, { options: { skin, scene: 'auto' } }, async ($, on) => {
     mock.clock(on, { now: 100000 })
     const ui = await $.ui.mount(BAND)
-    expect(String((await ui.find({ type: 'Svg' }))?.props.source)).toContain(`Place: ${place}`)
+    expect(String((await liveSvg(ui))?.props.source)).toContain(`Place: ${place}`)
     expect((await $.command.run({ command: 'avatars', args: '' })).text).toContain(`scene ${scene}`)
     await ui.unmount()
   })

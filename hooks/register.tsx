@@ -59,7 +59,7 @@ type Avatar = {
   total: number
 }
 
-const VERSION = '0.11.0'
+const VERSION = '0.12.0'
 const COLORS = ['#ff8a1f', '#37c871', '#b45cff', '#2fa8ff', '#ffd23f', '#ff5c7a', '#e6e6e6']
 const LINGER_MS = 15000
 const MOOD_MS = 5000
@@ -69,6 +69,9 @@ const ENTER_MS = 700
 const FRAME_MS = 250
 const EASE = '0.42 0 0.58 1' // ease-in-out for every eased SMIL interval
 const REUSE_MS = 20000 // how long an unchanged scene keeps its loaded markup
+const SETTLE_MS = 300 // how long a reloaded frame is given to paint before it shows
+const STALE_MS = 1500 // through a burst of changes, how long the shown picture may lag
+const LIVE_ALT = 'Agents: '
 const NOTICE_MS = 1600
 const THANKS_MS = 2600
 const FRESH_MS = 2200
@@ -597,7 +600,7 @@ const agentSvg = (a: Avatar, now: number, compact = false) => {
   const seated = arrived && !meeting && place.place?.shape === 'sofa'
   const droop = TIRED === 2 && !moving ? -U : 0
   const body = `<g transform="translate(${-7 * U} ${GY - 10 * U - (seated ? 5 : 0) - droop})">${robotBody(SKINS[a.skin] ?? SKINS['robot']!, a.color, lifestyle ? false : a.isWorking, a.mood, moving)}</g>`
-  const inner = `<title>${esc(a.name)} — ${a.personality.title}: ${a.isWorking ? esc(bubbleText(a)) : esc(moodLabel(a) || 'idle')}</title>${shadowSvg(moving && !seated)}
+  const inner = `<title>${esc(a.name)} — ${a.personality.title}</title>${shadowSvg(moving && !seated)}
 ${arrived ? `<title>at the ${place.title}</title>` : ''}
 ${personalitySvg(a.personality, lifestyle ? lifeActorSvg(body,THEME,a.episode,a.personality,now,GY,BEHAVIOR,LIVELINESS,arrived,meeting || a.waiting || !!a.permissionTokens.size,a.cue?.kind === 'tool-error' ? 'error' : a.mood || (!a.isWorking ? 'rest' : '')) : (beat ? actionPose(body, a.choreography, a.personality, GY, now, LIVELINESS) : body) + (meeting ? '' : beat ? actionSvg(a.choreography!, a.personality, GY, a.skin === 'anime' ? '#ffd9b8' : a.color, now, BEHAVIOR, LIVELINESS, context ?? undefined) : propSvg(performance, GY, a.skin === 'anime' ? '#ffd9b8' : a.color, now, BEHAVIOR, LIVELINESS)), GY, now, BEHAVIOR, LIVELINESS)}
 ${flourishSvg(a.personality, GY, a.flourishAt, now, BEHAVIOR, LIVELINESS)}
@@ -1214,7 +1217,19 @@ export const register: Register = (on, options) => {
   let nextFlourishAt = Infinity
   // The desktop draws the scene in a frame that reloads on every new source,
   // blanking for a moment; an unchanged scene keeps the markup already playing.
-  let shown = { key: '', source: '', at: 0 }
+  // A real change is double-buffered over two frames, the second laid over the
+  // first: it loads into the frame out of sight and is shown once that frame has
+  // had SETTLE_MS to paint, so the frame in view never reloads. A burst of
+  // changes reloads the hidden frame again unseen; after STALE_MS of lagging it
+  // is left to settle and the latest change waits for the next swap.
+  type Frame = { key: string; source: string; at: number }
+  const frames: [Frame, Frame] = [{ key: '', source: '', at: 0 }, { key: '', source: '', at: 0 }]
+  let live = 0 // the frame holding the latest picture
+  let seen = 0 // the frame in view
+  let pending = false
+  let lagSince = 0 // when the frame in view stopped showing the latest picture
+  const settled = (now: number) => now - frames[live]!.at >= SETTLE_MS
+  const bufferDue = (now: number) => pending || live !== seen && settled(now)
   let flourishIx = 0
 
   const make = (id: string, name: string, color: string): Avatar => {
@@ -1480,6 +1495,7 @@ export const register: Register = (on, options) => {
         }
         nextFlourishAt = now + flourishInterval(LIVELINESS)
       }
+      if (!isTerminal && bufferDue(now)) changed = true
       // The terminal animates by redrawing; the desktop's SVG animates itself.
       if (isTerminal || changed) $.ui.invalidate('ui.render')
     })
@@ -1859,18 +1875,27 @@ export const register: Register = (on, options) => {
     const all: Avatar[] = [mainAv, ...list]
 
     if (e.surface === 'desktop' || e.surface === 'vscode') {
-      const { Svg } = $.ui.resolve(e) as any
+      const { Svg, Box } = $.ui.resolve(e) as any
       const source = sceneSvg(all, now)
       const key = sceneKey(source)
-      if (key !== shown.key || now - shown.at > REUSE_MS) shown = { key, source, at: now }
+      if (live !== seen && settled(now)) seen = live
+      pending = false
+      if (!frames[live]!.key) frames[live] = { key, source, at: now }
+      else if (key !== frames[live]!.key || now - frames[live]!.at > REUSE_MS) {
+        if (live === seen) {
+          live = 1 - live
+          frames[live] = { key, source, at: now }
+          lagSince = now
+        } else if (now - lagSince > STALE_MS && !settled(now)) pending = true
+        else frames[live] = { key, source, at: now }
+      }
+      const alt = `${LIVE_ALT}${all.map(a => `${a.name} (${a.personality.title}) ${a.isWorking ? bubbleText(a) : moodLabel(a) || 'idle'}: ${visualDescription(a,now)}${!hasLife(THEME) && stageLabel(a, now) ? '; ' + stageLabel(a, now) : ''}${a.cue ? '; ' + cueLabel(a.cue) : ''}`).join(', ')}`
+      const frame = (i: number) => <Svg source={frames[i]!.source} alt={i === live ? alt : 'The agents scene, a moment ago'} width={W} height={H} isInteractive />
       return (
-        <Svg
-          source={shown.source}
-          alt={`Agents: ${all.map(a => `${a.name} (${a.personality.title}) ${a.isWorking ? bubbleText(a) : moodLabel(a) || 'idle'}: ${visualDescription(a,now)}${!hasLife(THEME) && stageLabel(a, now) ? '; ' + stageLabel(a, now) : ''}${a.cue ? '; ' + cueLabel(a.cue) : ''}`).join(', ')}`}
-          width={W}
-          height={H}
-          isInteractive
-        />
+        <Box position="relative">
+          <Box key="scene-0">{frame(0)}</Box>
+          {frames[1].source ? <Box key="scene-1" position="absolute" top={0} left={0} display={seen === 1 ? 'flex' : 'none'}>{frame(1)}</Box> : null}
+        </Box>
       )
     }
 

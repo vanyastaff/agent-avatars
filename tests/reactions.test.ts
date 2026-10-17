@@ -1,4 +1,5 @@
 import { expect, mock, test } from 'claude-code/testing'
+import { liveSvg } from './host.ts'
 
 const BAND = {
   plugin: 'agent-avatars', component: 'AbovePrompt', surface: 'desktop',
@@ -23,7 +24,7 @@ const setup = async ($: any, on: any, isWorking = false) => {
   await $.session.start({ surface: 'desktop', isInteractive: true, cwd: '/work' })
   await clock.advance(1000) // past the opening pop-in
   const ui = await $.ui.mount({ ...BAND, props: { ...BAND.props, isWorking } })
-  const source = async () => String((await ui.find({ type: 'Svg' }))?.props.source)
+  const source = async () => String((await liveSvg(ui))?.props.source)
   return { clock, ui, source }
 }
 

@@ -1,4 +1,5 @@
 import { expect, mock, test } from 'claude-code/testing'
+import { liveSvg } from './host.ts'
 
 const BAND = {
   plugin: 'agent-avatars', component: 'AbovePrompt', surface: 'desktop',
@@ -16,7 +17,7 @@ test('a finished turn shows rising hearts, a failed one a rain cloud', async ($,
   on('turn.start', ($, e) => ({ turnId: e.turnId }))
   on('turn.complete', () => ({ text: '' }))
   const ui = await $.ui.mount(BAND)
-  const source = async () => String((await ui.find({ type: 'Svg' }))?.props.source)
+  const source = async () => String((await liveSvg(ui))?.props.source)
   await $.turn.start({ turnId: 't', text: 'Work' })
   await $.turn.complete({ turnId: 't', answer: 'Done', durationMs: 1, isAborted: false, reason: 'answer' })
   await ui.redraw({ isWorking: false, bodyColumns: 95 })
@@ -38,7 +39,7 @@ test('a waiting agent shows a question mark', async ($, on) => {
   on('session.start', () => ({ cwd: '/work' }))
   await $.session.start({ surface: 'desktop', isInteractive: true, cwd: '/work' })
   const ui = await $.ui.mount({ ...BAND, props: { isWorking: false, bodyColumns: 95 } })
-  expect(String((await ui.find({ type: 'Svg' }))?.props.source).includes(QUESTION_BLUE)).toBe(true)
+  expect(String((await liveSvg(ui))?.props.source).includes(QUESTION_BLUE)).toBe(true)
   await ui.unmount()
 })
 
@@ -48,7 +49,7 @@ for (const [scene, mark] of [['night', 'fill="#ffffff" opacity="0.2"'], ['meadow
     on('agent.list', () => ({ value: [] }))
     on('config.list', () => ({ value: [] }))
     const ui = await $.ui.mount({ ...BAND, props: { isWorking: false, bodyColumns: 95 } })
-    expect(String((await ui.find({ type: 'Svg' }))?.props.source).includes(mark)).toBe(true)
+    expect(String((await liveSvg(ui))?.props.source).includes(mark)).toBe(true)
     await ui.unmount()
   })
   test(`${scene} quiet has no passers-by`, { options: { scene, liveliness: 'quiet' } }, async ($, on) => {
@@ -56,7 +57,7 @@ for (const [scene, mark] of [['night', 'fill="#ffffff" opacity="0.2"'], ['meadow
     on('agent.list', () => ({ value: [] }))
     on('config.list', () => ({ value: [] }))
     const ui = await $.ui.mount({ ...BAND, props: { isWorking: false, bodyColumns: 95 } })
-    expect(String((await ui.find({ type: 'Svg' }))?.props.source).includes(mark)).toBe(false)
+    expect(String((await liveSvg(ui))?.props.source).includes(mark)).toBe(false)
     await ui.unmount()
   })
 }

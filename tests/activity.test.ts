@@ -1,5 +1,5 @@
 import { expect, mock, test } from 'claude-code/testing'
-import { heldTools } from './host.ts'
+import { heldTools, liveSvg } from './host.ts'
 
 const BAND = {
   plugin: 'agent-avatars',
@@ -13,9 +13,9 @@ test('the main agent shows the tool it is running', async ($, on) => {
   const start = heldTools($, on, clock)
   const finish = await start({ tool: 'Read', file_path: '/work/README.md' })
   const ui = await $.ui.mount(BAND)
-  expect(String((await ui.find({ type: 'Svg' }))?.props.source).includes('reading…')).toBe(true)
+  expect(String((await liveSvg(ui))?.props.source).includes('reading…')).toBe(true)
   await finish()
-  expect(String((await ui.find({ type: 'Svg' }))?.props.source).includes('thinking…')).toBe(true)
+  expect(String((await liveSvg(ui))?.props.source).includes('thinking…')).toBe(true)
   await ui.unmount()
 })
 
@@ -25,7 +25,7 @@ test('main-agent action bubbles show escaped input on desktop and VS Code', { op
   const finish = await start({ tool: 'Read', file_path: '/work/<secret>.rs' })
   for (const surface of ['desktop', 'vscode'] as const) {
     const ui = await $.ui.mount({ ...BAND, surface })
-    const source = String((await ui.find({ type: 'Svg' }))?.props.source)
+    const source = String((await liveSvg(ui))?.props.source)
     expect(source.includes('read &lt;secret&gt;.rs')).toBe(true)
     expect(source.includes('<secret>')).toBe(false)
     await ui.unmount()
@@ -70,7 +70,7 @@ test('AI thoughts for the main agent are escaped and limited to one per twelve s
   const start = heldTools($, on, clock)
   const finish = await start({ tool: 'Read', file_path: '/work/main.rs' })
   const ui = await $.ui.mount(BAND)
-  expect(String((await ui.find({ type: 'Svg' }))?.props.source).includes('&lt;label&gt;&amp;')).toBe(true)
+  expect(String((await liveSvg(ui))?.props.source).includes('&lt;label&gt;&amp;')).toBe(true)
   await finish()
   await clock.advance(12000)
   const finishSearch = await start({ tool: 'Grep', pattern: 'TODO' })
@@ -99,7 +99,7 @@ test('an unavailable AI model falls back to the action without blocking tools', 
   const start = heldTools($, on, clock)
   const finish = await start({ tool: 'Read', file_path: '/work/main.rs' })
   const ui = await $.ui.mount(BAND)
-  expect(String((await ui.find({ type: 'Svg' }))?.props.source).includes('read main.rs')).toBe(true)
+  expect(String((await liveSvg(ui))?.props.source).includes('read main.rs')).toBe(true)
   // Naming applies to new subagents; the main avatar keeps its stable name.
   expect(requests).toBe(1)
   expect((await $.command.run({ command: 'avatars', args: '' })).text).toContain('robot: main')
@@ -118,8 +118,8 @@ test('the main agent clears its completion mood after five seconds on the host c
   await $.turn.complete({ turnId: 'turn', answer: 'Done', durationMs: 100, isAborted: false, reason: 'answer' })
   const ui = await $.ui.mount({ ...BAND, props: { ...BAND.props, isWorking: false } })
   await clock.advance(5000)
-  expect(String((await ui.find({ type: 'Svg' }))?.props.source).includes('✓ done')).toBe(true)
+  expect(String((await liveSvg(ui))?.props.source).includes('✓ done')).toBe(true)
   await clock.advance(250)
-  expect(String((await ui.find({ type: 'Svg' }))?.props.source).includes('✓ done')).toBe(false)
+  expect(String((await liveSvg(ui))?.props.source).includes('✓ done')).toBe(false)
   await ui.unmount()
 })

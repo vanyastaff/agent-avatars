@@ -14,3 +14,8 @@ export const heldTools = ($: Parameters<TestBody>[0], on: On, clock: MockClock) 
     return async () => { release(); return await result }
   }
 }
+
+// The desktop scene is double-buffered over two frames; the one with the latest
+// picture is the one whose alt describes the agents.
+export const liveSvg = async (ui: { findAll: (q: { type: string }) => Promise<Array<{ props: Record<string, unknown> }>> }) =>
+  (await ui.findAll({ type: 'Svg' })).find(e => String(e.props.alt).startsWith('Agents: '))

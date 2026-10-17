@@ -1,5 +1,5 @@
 import { expect, mock, test } from 'claude-code/testing'
-import { heldTools } from './host.ts'
+import { heldTools, liveSvg } from './host.ts'
 
 const BAND = { plugin: 'agent-avatars', component: 'AbovePrompt', surface: 'desktop', props: { isWorking: true, bodyColumns: 95 } } as const
 
@@ -10,7 +10,7 @@ test('commands, accepted settings, compaction and messages have different visibl
   on('session.compact', ($, e) => ({ messages: e.messages }))
   on('session.receive', ($, e) => ({ text: e.text }))
   const ui = await $.ui.mount(BAND)
-  const source = async () => String((await ui.find({ type: 'Svg' }))?.props.source)
+  const source = async () => String((await liveSvg(ui))?.props.source)
   expect(await $.command.run({ command: 'help', args: '' })).toEqual({ text: 'command result' })
   expect((await source()).includes('Event: checking the task board')).toBe(true)
   await $.config.set({ key: 'agent-avatars.behavior', value: 'adventure', previous: 'cozy', provider: { plugin: 'agent-avatars', tier: 'user' }, origin: { kind: 'composer' } })
@@ -31,9 +31,9 @@ test('a real approval wait is visible and never changes the permission verdict',
   const decision = await $.tool.check({ tool: 'Bash', input: { command: 'example' }, tool_use_id: 'real-call' })
   expect(decision).toEqual({ decision: 'ask', reason: 'User approval required' })
   const ui = await $.ui.mount(BAND)
-  expect(String((await ui.find({ type: 'Svg' }))?.props.source).includes('? approval')).toBe(true)
+  expect(String((await liveSvg(ui))?.props.source).includes('? approval')).toBe(true)
   await finish()
-  const source = String((await ui.find({ type: 'Svg' }))?.props.source)
+  const source = String((await liveSvg(ui))?.props.source)
   expect(source.includes('? approval')).toBe(false)
   expect(source.includes('thinking…')).toBe(true)
   await ui.unmount()
@@ -45,11 +45,11 @@ test('finishing the latest parallel tool restores the remaining activity', async
   const finishRead = await start({ tool: 'Read', file_path: '/work/a.rs' })
   const finishRun = await start({ tool: 'Bash', command: 'build' })
   const ui = await $.ui.mount(BAND)
-  expect(String((await ui.find({ type: 'Svg' }))?.props.source).includes('running…')).toBe(true)
+  expect(String((await liveSvg(ui))?.props.source).includes('running…')).toBe(true)
   await finishRun()
-  expect(String((await ui.find({ type: 'Svg' }))?.props.source).includes('reading…')).toBe(true)
+  expect(String((await liveSvg(ui))?.props.source).includes('reading…')).toBe(true)
   await finishRead()
-  expect(String((await ui.find({ type: 'Svg' }))?.props.source).includes('thinking…')).toBe(true)
+  expect(String((await liveSvg(ui))?.props.source).includes('thinking…')).toBe(true)
   await ui.unmount()
 })
 
@@ -58,7 +58,7 @@ test('a tool error is shown without changing its result or declaring the turn fa
   on('tool.call', () => ({ result: 'failed command', isError: true }))
   expect(await $.tool.call({ tool: 'Bash', command: 'example' })).toEqual({ result: 'failed command', isError: true })
   const ui = await $.ui.mount(BAND)
-  const source = String((await ui.find({ type: 'Svg' }))?.props.source)
+  const source = String((await liveSvg(ui))?.props.source)
   expect(source.includes('Event: the tool reported an error')).toBe(true)
   expect(source.includes('! failed')).toBe(false)
   await ui.unmount()
@@ -71,7 +71,7 @@ test('a rejected configuration change does not change the performance', async ($
   expect(await $.config.set({ key: 'agent-avatars.behavior', value: 'chaotic', previous: 'cozy', provider: { plugin: 'agent-avatars', tier: 'user' }, origin: { kind: 'composer' } })).toEqual({ deny: 'Unavailable' })
   const finish = await start({ tool: 'Read', file_path: '/work/a.rs' })
   const ui = await $.ui.mount(BAND)
-  expect(String((await ui.find({ type: 'Svg' }))?.props.alt).includes('reading a book')).toBe(true)
+  expect(String((await liveSvg(ui))?.props.alt).includes('reading a book')).toBe(true)
   await finish()
   await ui.unmount()
 })
@@ -85,7 +85,7 @@ test('a subagent already observed during spawning keeps its turn state and ident
   })
   await $.agent.spawn({ name: 'Ada', description: 'Research', prompt: 'Work' })
   const ui = await $.ui.mount(BAND)
-  expect(String((await ui.find({ type: 'Svg' }))?.props.alt).includes('Ada (Curious)')).toBe(true)
+  expect(String((await liveSvg(ui))?.props.alt).includes('Ada (Curious)')).toBe(true)
   await ui.unmount()
 })
 
@@ -114,7 +114,7 @@ test('fast tools leave a temporary receipt while the actor is already thinking',
   await $.session.start({ surface: 'desktop', isInteractive: true, cwd: '/work' })
   await $.tool.call({ tool: 'Read', file_path: '/work/a.rs' })
   const ui = await $.ui.mount(BAND)
-  const source = async () => String((await ui.find({ type: 'Svg' }))?.props.source)
+  const source = async () => String((await liveSvg(ui))?.props.source)
   expect((await source()).includes('Event: the last tool returned')).toBe(true)
   expect((await source()).includes('thinking…')).toBe(true)
   await clock.advance(3500)

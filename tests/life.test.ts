@@ -1,5 +1,5 @@
 import { expect, mock, test } from 'claude-code/testing'
-import { heldTools } from './host.ts'
+import { heldTools, liveSvg } from './host.ts'
 
 const BAND = { plugin: 'agent-avatars', component: 'AbovePrompt', surface: 'desktop', props: { isWorking: true, bodyColumns: 95 } } as const
 
@@ -12,7 +12,7 @@ for (const [scene, shared] of [['city','sharing a little street gossip'],['ocean
     await clock.advance(6000)
     const ui = await $.ui.mount(BAND)
     await $.session.send({ to: 'child', text: 'private message' })
-    const source = String((await ui.find({ type: 'Svg' }))?.props.source)
+    const source = String((await liveSvg(ui))?.props.source)
     expect(source.includes(`Together: ${shared}`)).toBe(true)
     expect(source.includes('workshop kit')).toBe(false)
     expect(source.includes('private message')).toBe(false)
@@ -31,7 +31,7 @@ test('ocean inhabitants rest among anemones and follow fish instead of operating
   const ui = await $.ui.mount(BAND)
   const finish = await start({ tool: 'Bash', command: 'build' })
   await clock.advance(3000)
-  const source = async () => String((await ui.find({ type: 'Svg' }))?.props.source)
+  const source = async () => String((await liveSvg(ui))?.props.source)
   expect((await source()).includes('Life: nestling in the anemones')).toBe(true)
   expect((await source()).includes('air pump')).toBe(false)
   await clock.advance(12000)
@@ -50,13 +50,13 @@ test('city life keeps warming hands through different tools, then moves on to gr
   const start = heldTools($, on, clock)
   await $.session.start({ surface: 'desktop', isInteractive: true, cwd: '/work' })
   const ui = await $.ui.mount(BAND)
-  const source = async () => String((await ui.find({ type: 'Svg' }))?.props.source)
+  const source = async () => String((await liveSvg(ui))?.props.source)
   const finishRead = await start({ tool: 'Read', file_path: '/work/a.rs' })
   await clock.advance(3000)
   expect((await source()).includes('Life: warming hands at the barrel')).toBe(true)
-  expect((await source()).includes('reading…')).toBe(true)
+  expect(String((await liveSvg(ui))?.props.alt).includes('reading…')).toBe(true)
   expect((await source()).includes('<title>reading a book</title>')).toBe(false)
-  expect(String((await ui.find({ type: 'Svg' }))?.props.alt).includes('reading a book')).toBe(false)
+  expect(String((await liveSvg(ui))?.props.alt).includes('reading a book')).toBe(false)
   const diagnostic = (await $.command.run({ command: 'avatars', args: '' })).text
   expect(diagnostic).toContain('warming hands at the barrel')
   expect(diagnostic).toContain('reading…')
@@ -64,7 +64,7 @@ test('city life keeps warming hands through different tools, then moves on to gr
   await finishRead()
   const finishEdit = await start({ tool: 'Edit', file_path: '/work/a.rs', old_string: 'a', new_string: 'b' })
   expect((await source()).includes('Life: warming hands at the barrel')).toBe(true)
-  expect((await source()).includes('writing…')).toBe(true)
+  expect(String((await liveSvg(ui))?.props.alt).includes('writing…')).toBe(true)
   await clock.advance(13000)
   expect((await source()).includes('Life: turning skewers on the street grill')).toBe(true)
   expect((await source()).includes('signal cabinet')).toBe(false)
@@ -84,11 +84,11 @@ for (const [liveliness, span] of [['quiet',20000],['normal',12000],['lively',800
     const ui = await $.ui.mount(BAND)
     const finish = await start({ tool: 'Read', file_path: '/work/a.rs' })
     await clock.advance(span - 500)
-    expect(String((await ui.find({ type: 'Svg' }))?.props.source).includes('Life: taking a last sip by the fire')).toBe(true)
+    expect(String((await liveSvg(ui))?.props.source).includes('Life: taking a last sip by the fire')).toBe(true)
     await finish()
     const finishNext = await start({ tool: 'Bash', command: 'build' })
     await clock.advance(3500)
-    expect(String((await ui.find({ type: 'Svg' }))?.props.source).includes('Life: turning skewers on the street grill')).toBe(true)
+    expect(String((await liveSvg(ui))?.props.source).includes('Life: turning skewers on the street grill')).toBe(true)
     await finishNext()
     await ui.unmount()
   })
@@ -102,11 +102,11 @@ test('an approval wait pauses ocean play and a tool error changes the mood witho
   const result = $.tool.call({ tool: 'Bash', command: 'build' })
   await clock.settle()
   expect(await $.tool.check({ tool: 'Bash', input: { command: 'build' }, tool_use_id: 'real' })).toEqual({ decision: 'ask', reason: 'Confirm' })
-  expect(String((await ui.find({ type: 'Svg' }))?.props.alt).includes('? approval')).toBe(true)
-  expect(String((await ui.find({ type: 'Svg' }))?.props.source).includes('Life: waiting quietly at the anemone bed')).toBe(true)
+  expect(String((await liveSvg(ui))?.props.alt).includes('? approval')).toBe(true)
+  expect(String((await liveSvg(ui))?.props.source).includes('Life: waiting quietly at the anemone bed')).toBe(true)
   await clock.advance(3000)
   expect(await result).toEqual({ result: 'real error', isError: true })
-  expect(String((await ui.find({ type: 'Svg' }))?.props.source).includes('Life: startled for a moment at the anemone bed')).toBe(true)
+  expect(String((await liveSvg(ui))?.props.source).includes('Life: startled for a moment at the anemone bed')).toBe(true)
   await ui.unmount()
 })
 
@@ -119,7 +119,7 @@ test('five city inhabitants choose different pastimes according to their persona
   await $.session.start({ surface: 'desktop', isInteractive: true, cwd: '/work' })
   const ui = await $.ui.mount(BAND)
   await clock.advance(3000)
-  const source = String((await ui.find({ type: 'Svg' }))?.props.source)
+  const source = String((await liveSvg(ui))?.props.source)
   for (const label of ['warming hands at the barrel; Meticulous','hanging out on the front stoop; Curious','dancing to the street music; Dramatic','warming hands at the barrel; Sleepy','hanging out on the front stoop; Shy']) {
     expect(source.includes(`Life: ${label}`)).toBe(true)
   }
