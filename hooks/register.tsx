@@ -51,12 +51,15 @@ type Avatar = {
   // where the robot stands when idle, and the walk it is on while working
   restX: number
   seed: number
+  noticedAt: number // when it looked up at your prompt
+  thanksAt: number // when your prompt thanked it
+  longRun: boolean // a tool of its has run past LONG_MS: it has a cup of tea meanwhile
   pathStart: number
   segs: Seg[]
   total: number
 }
 
-const VERSION = '0.10.0'
+const VERSION = '0.11.0'
 const COLORS = ['#ff8a1f', '#37c871', '#b45cff', '#2fa8ff', '#ffd23f', '#ff5c7a', '#e6e6e6']
 const LINGER_MS = 15000
 const MOOD_MS = 5000
@@ -66,6 +69,11 @@ const ENTER_MS = 700
 const FRAME_MS = 250
 const EASE = '0.42 0 0.58 1' // ease-in-out for every eased SMIL interval
 const REUSE_MS = 20000 // how long an unchanged scene keeps its loaded markup
+const NOTICE_MS = 1600
+const THANKS_MS = 2600
+const FRESH_MS = 2200
+const LONG_MS = 20000
+const THANKS = /спасиб|благодар|thank|thx|merci|danke|gracias/i
 const EYE = '#2b2b2b'
 const B = '█'
 
@@ -197,6 +205,10 @@ let NAMES = 'static'
 let THOUGHTS = 'static'
 let BEHAVIOR: Behavior = 'cozy'
 let LIVELINESS: Liveliness = 'normal'
+// How full the context window is: 0 fresh, 1 getting full (yawns), 2 nearly full
+// (drooping, a dimmer scene). Compaction makes everybody fresh again.
+let TIRED = 0
+let FRESH_AT = 0
 
 const LEAD = /^(please\s+)?(fix|implement|rework|refactor|add|update|investigate|review|check|find|write|create|build|run|make|handle|address|resolve)\s+/i
 const STOP = new Set(['the', 'a', 'an', 'and', 'for', 'of', 'in', 'to', 'on', 'with', 'onto', 'into', 'last', 'latest', 'new', 'another', 'remaining'])
@@ -467,6 +479,53 @@ const moodSvg = (a: Avatar) => {
   return ''
 }
 
+const BANG = ['#', '#', '#', '.', '#']
+
+// What happens around an avatar because of the session itself: it looks up at
+// your prompt, glows at a thank-you, brews tea through a long command, yawns as
+// the context fills and sparkles once it is compacted. One-shots are timed by
+// negative begins, so an unchanged scene keeps its markup.
+const reactionSvg = (a: Avatar, now: number) => {
+  if (a.leaveAt) return ''
+  const quiet = LIVELINESS === 'quiet'
+  const head = GY - 10 * U
+  let s = ''
+  const once = (at: number, ms: number) => `dur="${ms / 1000}s" begin="-${((now - at) / 1000).toFixed(2)}s" fill="freeze"`
+  if (a.noticedAt && now - a.noticedAt < NOTICE_MS) {
+    const t = once(a.noticedAt, NOTICE_MS)
+    s += `<g shape-rendering="crispEdges" opacity="0"><animate attributeName="opacity" values="0;1;1;0" keyTimes="0;0.1;0.7;1" ${t}/><animateTransform attributeName="transform" type="translate" values="0 6;0 -3;0 -5" keyTimes="0;0.25;1" ${t} calcMode="spline" keySplines="0.2 0.8 0.4 1;${EASE}"/>${glyph(BANG, -8 * U - 4, head, 2, '#ffd23f')}</g>`
+  }
+  if (a.thanksAt && now - a.thanksAt < THANKS_MS && !quiet) {
+    const t = once(a.thanksAt, THANKS_MS)
+    s += `<g shape-rendering="crispEdges">${[-2, -1, 0, 1, 2].map(i => `<g opacity="0"><animate attributeName="opacity" values="0;1;1;0" keyTimes="0;0.1;0.6;1" ${t}/><animateTransform attributeName="transform" type="translate" values="0 0;${i * 14} ${-22 - (2 - Math.abs(i)) * 6}" ${t} calcMode="spline" keyTimes="0;1" keySplines="0.2 0.7 0.4 1"/>${glyph(HEART, -5, head + 6, 2, i % 2 ? '#ffd23f' : '#ff6fa5')}</g>`).join('')}</g>`
+  }
+  if (a.longRun) {
+    const mx = -7 * U - 14
+    const steam = quiet ? '' : [0, 1].map(i => `<rect x="${mx + 2 + i * 4}" y="${GY - 14}" width="1.5" height="3" fill="#d8d8d8" opacity="0"><animate attributeName="opacity" values="0;0.8;0" dur="1.6s" begin="${(i * 0.8).toFixed(1)}s" repeatCount="indefinite"/><animateTransform attributeName="transform" type="translate" values="0 0;${i ? 2 : -2} -8" dur="1.6s" begin="${(i * 0.8).toFixed(1)}s" repeatCount="indefinite"/></rect>`).join('')
+    s += `<g shape-rendering="crispEdges"><title>a long command: having a cup of tea</title><rect x="${mx}" y="${GY - 9}" width="9" height="8" fill="#e9e1d0"/><rect x="${mx}" y="${GY - 9}" width="9" height="2" fill="#7a5a3a"/><rect x="${mx + 9}" y="${GY - 7}" width="3" height="4" fill="none" stroke="#e9e1d0" stroke-width="1.2"/><rect x="${mx - 2}" y="${GY - 1}" width="13" height="1.5" fill="#c9bfae"/>${steam}</g>`
+  }
+  if (TIRED && !a.isWorking && !quiet || TIRED === 2 && !quiet) {
+    // a yawn every few seconds: a little 'o' that drifts off
+    s += `<g opacity="0"><animate attributeName="opacity" values="0;0;0.85;0" keyTimes="0;0.75;0.82;1" dur="${TIRED === 2 ? 4.5 : 7}s" begin="${(a.seed % 5) * 0.9}s" repeatCount="indefinite"/><animateTransform attributeName="transform" type="translate" values="0 0;0 0;3 -10" keyTimes="0;0.75;1" dur="${TIRED === 2 ? 4.5 : 7}s" begin="${(a.seed % 5) * 0.9}s" repeatCount="indefinite"/><circle cx="${-8 * U}" cy="${head + 8}" r="2.5" fill="none" stroke="#c8c8c8" stroke-width="1.2"/></g>`
+  }
+  if (FRESH_AT && now - FRESH_AT < FRESH_MS && !quiet) {
+    const t = once(FRESH_AT, FRESH_MS)
+    s += `<g fill="#fff6c8" shape-rendering="crispEdges">${[[-24, -6], [22, -14], [-10, -34], [14, 2]].map(([dx, dy], i) => `<g opacity="0"><animate attributeName="opacity" values="0;1;0" keyTimes="0;${(0.15 + i * 0.12).toFixed(2)};1" ${t}/><rect x="${dx! - 1}" y="${head + dy! - 4}" width="2" height="8"/><rect x="${dx! - 4}" y="${head + dy! - 1}" width="8" height="2"/></g>`).join('')}</g>`
+  }
+  return s
+}
+
+// The time of day tints a filled sky: dawn, dusk and night, by the local hour.
+const daylight = (now: number) => {
+  if (!SKY) return ''
+  const hour = new Date(now).getHours()
+  const [fill, alpha] = hour >= 22 || hour < 5 ? ['#0b1026', 0.35] : hour < 8 ? ['#ffb37a', 0.14] : hour >= 18 ? ['#ff7a3a', 0.14] : ['', 0]
+  return fill ? `<rect width="${W}" height="${H}" rx="8" fill="${fill}" opacity="${alpha}"/>` : ''
+}
+
+// A nearly full context dims the scene a little, as if the room were tired.
+const weariness = () => TIRED === 2 && SKY && LIVELINESS !== 'quiet' ? `<rect width="${W}" height="${H}" rx="8" fill="#000" opacity="0.12"/>` : ''
+
 // The ground shadow squeezes as the feet leave the ground.
 const shadowSvg = (moving: boolean) => {
   const w = 14 * U
@@ -536,13 +595,14 @@ const agentSvg = (a: Avatar, now: number, compact = false) => {
   const context = contextualAction(a, now)
   const place = scenePlace(THEME, a.stationKind, W, a.seed, a.episode)
   const seated = arrived && !meeting && place.place?.shape === 'sofa'
-  const body = `<g transform="translate(${-7 * U} ${GY - 10 * U - (seated ? 5 : 0)})">${robotBody(SKINS[a.skin] ?? SKINS['robot']!, a.color, lifestyle ? false : a.isWorking, a.mood, moving)}</g>`
+  const droop = TIRED === 2 && !moving ? -U : 0
+  const body = `<g transform="translate(${-7 * U} ${GY - 10 * U - (seated ? 5 : 0) - droop})">${robotBody(SKINS[a.skin] ?? SKINS['robot']!, a.color, lifestyle ? false : a.isWorking, a.mood, moving)}</g>`
   const inner = `<title>${esc(a.name)} — ${a.personality.title}: ${a.isWorking ? esc(bubbleText(a)) : esc(moodLabel(a) || 'idle')}</title>${shadowSvg(moving && !seated)}
 ${arrived ? `<title>at the ${place.title}</title>` : ''}
 ${personalitySvg(a.personality, lifestyle ? lifeActorSvg(body,THEME,a.episode,a.personality,now,GY,BEHAVIOR,LIVELINESS,arrived,meeting || a.waiting || !!a.permissionTokens.size,a.cue?.kind === 'tool-error' ? 'error' : a.mood || (!a.isWorking ? 'rest' : '')) : (beat ? actionPose(body, a.choreography, a.personality, GY, now, LIVELINESS) : body) + (meeting ? '' : beat ? actionSvg(a.choreography!, a.personality, GY, a.skin === 'anime' ? '#ffd9b8' : a.color, now, BEHAVIOR, LIVELINESS, context ?? undefined) : propSvg(performance, GY, a.skin === 'anime' ? '#ffd9b8' : a.color, now, BEHAVIOR, LIVELINESS)), GY, now, BEHAVIOR, LIVELINESS)}
 ${flourishSvg(a.personality, GY, a.flourishAt, now, BEHAVIOR, LIVELINESS)}
 ${meeting || lifestyle && (a.cue?.kind === 'tool-result' || a.cue?.kind === 'tool-error') ? '' : cueSvg(a.cue, GY, now, LIVELINESS)}
-${meeting ? '' : moodSvg(a)}${tagSvg(a, compact)}${meeting ? talkBubbles(a, now) : ''}`
+${meeting ? '' : moodSvg(a) + reactionSvg(a, now)}${tagSvg(a, compact)}${meeting ? talkBubbles(a, now) : ''}`
   if (meeting) return LIVELINESS === 'quiet' ? `<g transform="translate(${a.talk!.x0.toFixed(1)} 0)">${withEffects(a, inner, now)}</g>`
     : `<g class="duet-motion" transform="translate(${a.talk!.x0.toFixed(1)} 0)" style="--duet-x:${a.talk!.x0.toFixed(1)}px">${meetingMove(a, now)}${withEffects(a, inner, now)}</g>`
   if (!a.isWorking) return `<g transform="translate(${Math.round(a.restX)} 0)">${withEffects(a, inner, now)}</g>`
@@ -1109,8 +1169,8 @@ const sceneKey = (svg: string) => svg.replace(/ begin="-?[\d.]+s"/g, '')
 const sceneSvg = (all: Avatar[], now: number) => phaseLoops(sceneMarkup(all, now), now)
 
 const sceneMarkup = (all: Avatar[], now: number) => `<svg xmlns="http://www.w3.org/2000/svg" class="${LOOK}" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}"><style>${LOOK_CSS}${MOTION_CSS}</style>
-${sky()}
-${scenery(now, all)}
+${sky()}${daylight(now)}
+${scenery(now, all)}${weariness()}
 ${all.map(a => agentSvg(a, now, W / Math.max(1, all.length) < 115)).join('')}
 ${celebration(now)}
 </svg>`
@@ -1200,6 +1260,9 @@ export const register: Register = (on, options) => {
       leaveAt: 0,
       restX: 50 + ((spawned * 0.618034) % 1) * (W - 100),
       seed: spawned,
+      noticedAt: 0,
+      thanksAt: 0,
+      longRun: false,
       pathStart: 0,
       segs: [],
       total: 0,
@@ -1319,6 +1382,7 @@ export const register: Register = (on, options) => {
 
   on('session.start', async ($, e, next) => {
     nextFlourishAt = await $.clock.now() + flourishInterval(LIVELINESS)
+    mainAv.spawnAt = await $.clock.now() // the main avatar pops in as the session opens
     try {
       await $.command.register({ name: 'avatars', description: 'Show which agents the avatar scene knows about' })
     } catch {
@@ -1339,6 +1403,7 @@ export const register: Register = (on, options) => {
       )
     void readTheme()
     let ticks = 0
+    let light = daylight(await $.clock.now())
     $.clock.every(FRAME_MS, async () => {
       const now = await $.clock.now()
       let changed = false
@@ -1353,7 +1418,13 @@ export const register: Register = (on, options) => {
         PARTY = null
         changed = true
       }
+      if (daylight(now) !== light) { light = daylight(now); changed = true }
+      if (FRESH_AT && now - FRESH_AT >= FRESH_MS) { FRESH_AT = 0; changed = true }
       for (const a of [mainAv, ...agents.values()]) {
+        const long = a.isWorking && [...a.activeTools.values()].some(t => now - t.choreography.at >= LONG_MS)
+        if (long !== a.longRun) { a.longRun = long; changed = true }
+        if (a.noticedAt && now - a.noticedAt >= NOTICE_MS) { a.noticedAt = 0; changed = true }
+        if (a.thanksAt && now - a.thanksAt >= THANKS_MS) { a.thanksAt = 0; changed = true }
         if (hasLife(THEME) && a.isWorking && !a.waiting && !a.permissionTokens.size && !a.mood && !a.talk && now - a.episode.at >= episodeSpan(LIVELINESS)) {
           a.episode = episodeFor(a.personality,a.episode.serial + 1,now)
           setWorkKind(a,a.workKind,now)
@@ -1667,7 +1738,34 @@ export const register: Register = (on, options) => {
     return result
   })
 
+  // Your prompt: the main avatar looks up, and glows at a thank-you. Only whether
+  // the text thanks it is read; the text itself is neither kept nor drawn.
+  on('prompt.submit', async ($, e, next) => {
+    if (!e.command && !e.isMeta) {
+      const now = await $.clock.now()
+      mainAv.noticedAt = now
+      if (THANKS.test(e.text)) mainAv.thanksAt = now
+      $.ui.invalidate('ui.render')
+    }
+    return next(e)
+  })
+
+  // The context window filling up tires the crew; only its percentage is read.
+  on('session.measure', async ($, e, next) => {
+    const p = e.context.percent
+    const level = p === undefined ? TIRED : p >= 80 ? 2 : p >= 60 ? 1 : 0
+    if (level !== TIRED) {
+      TIRED = level
+      $.ui.invalidate('ui.render')
+    }
+    return next(e)
+  })
+
   on('session.compact', async ($, e, next) => {
+    if (!e.agentId) {
+      TIRED = 0
+      FRESH_AT = await $.clock.now()
+    }
     const a = e.agentId ? agents.get(e.agentId) : mainAv
     if (a) {
       a.cue = { kind: 'compact', at: await $.clock.now() }

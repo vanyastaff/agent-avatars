@@ -15,7 +15,7 @@ const prefix = stripTypeScriptTypes(source.slice(0, boundary), { mode: 'strip' }
   .replaceAll("'./worlds.ts'", JSON.stringify(pathToFileURL(resolve(root, 'hooks/worlds.ts')).href))
   .replaceAll("'./life.ts'", JSON.stringify(pathToFileURL(resolve(root, 'hooks/life.ts')).href))
 const fixture = `
-export function preview(width, behavior, look, filled, mixed = false, beatAge = null, duetKind = null, duetAge = 1500, quiet = false, world = 'workshop', moods = false) {
+export function preview(width, behavior, look, filled, mixed = false, beatAge = null, duetKind = null, duetAge = 1500, quiet = false, world = 'workshop', moods = false, reactions = false) {
   W = width; H = 156; GY = 142; THEME = world; SKY = filled;
   BEHAVIOR = behavior; LIVELINESS = quiet ? 'quiet' : 'normal'; LOOK = look;
   const now = 120000;
@@ -42,6 +42,13 @@ export function preview(width, behavior, look, filled, mixed = false, beatAge = 
       a.flourishAt = null;
     }
   }
+  TIRED = reactions ? 2 : 0;
+  if (reactions) {
+    Object.assign(cast[0], { noticedAt: now - 300 });
+    Object.assign(cast[1], { longRun: true });
+    Object.assign(cast[2], { thanksAt: now - 500, isWorking: false });
+    Object.assign(cast[4], { isWorking: false });
+  }
   if (moods) {
     Object.assign(cast[0], { isWorking: false, mood: 'happy' });
     Object.assign(cast[1], { isWorking: false, mood: 'sad' });
@@ -67,6 +74,8 @@ const storyPanels = [
   ['Tool trouble', preview(751, 'chaotic', 'dark', true, true, null, 'trouble', 2600)],
   ['A finished task', preview(751, 'cozy', 'dark', true, true, null, 'finished', 2600)],
   ['Moods: done, failed, waiting, thinking', preview(751, 'cozy', 'dark', true, false, null, null, 1500, false, 'night', true)],
+  ['Session reactions: prompt, tea, thanks, tired', preview(751, 'cozy', 'dark', true, false, null, null, 1500, false, 'workshop', false, true)],
+  ['Session reactions in the meadow', preview(751, 'cozy', 'dark', true, true, null, null, 1500, false, 'meadow', false, true)],
   ['Moods in the meadow', preview(751, 'cozy', 'dark', true, true, null, null, 1500, false, 'meadow', true)],
   ['Narrow, light, quiet handoff', preview(360, 'cozy', 'light', false, true, null, 'message', 2600, true)],
 ]
