@@ -56,7 +56,7 @@ type Avatar = {
   total: number
 }
 
-const VERSION = '0.9.0'
+const VERSION = '0.9.1'
 const COLORS = ['#ff8a1f', '#37c871', '#b45cff', '#2fa8ff', '#ffd23f', '#ff5c7a', '#e6e6e6']
 const LINGER_MS = 15000
 const MOOD_MS = 5000
@@ -64,6 +64,8 @@ const ASK_TTL = 1500
 const EXIT_MS = 1400
 const ENTER_MS = 700
 const FRAME_MS = 250
+const EASE = '0.42 0 0.58 1' // ease-in-out for every eased SMIL interval
+const REUSE_MS = 20000 // how long an unchanged scene keeps its loaded markup
 const EYE = '#2b2b2b'
 const B = '█'
 
@@ -420,7 +422,7 @@ const robotBody = (skin: Skin, color: string, isWorking: boolean, mood = '', mov
       ? steps('0 0;2 0;-2 0;0 0', '0.3s')
       : isWorking ? '' : steps('0 0;0 -3;0 0', '2.4s', 'keyTimes="0;0.5;0.56"')
   const spark = isWorking && moving && LIVELINESS === 'lively'
-    ? `<g transform="translate(${5 * U} ${-3 * U})" fill="#ffd23f"><rect x="${U}" y="0" width="${U}" height="${3 * U}"/><rect x="0" y="${U}" width="${3 * U}" height="${U}"/><animate attributeName="opacity" values="1;0" dur="0.6s" calcMode="discrete" repeatCount="indefinite"/></g>`
+    ? `<g transform="translate(${5 * U} ${-3 * U})" fill="#ffd23f"><rect x="${U}" y="0" width="${U}" height="${3 * U}"/><rect x="0" y="${U}" width="${3 * U}" height="${U}"/><animate attributeName="opacity" values="1;0.2;1" dur="0.6s" repeatCount="indefinite"/></g>`
     : ''
   return `<g shape-rendering="crispEdges"><g class="actor-motion">${hop}<g transform="translate(0 ${7 * U})">${legs}</g>${pixels(skin.body, c)}${eyes}${spark}</g></g>`
 }
@@ -458,17 +460,17 @@ const withEffects = (a: Avatar, body: string, now: number) => {
   if (a.leaveAt) {
     const t = ((now - a.leaveAt) / 1000).toFixed(2)
     const d = EXIT_MS / 1000
-    const flicker = `<animate attributeName="opacity" values="1;0;1;0;1;0;0" keyTimes="0;0.15;0.3;0.45;0.6;0.75;1" dur="${d}s" begin="-${t}s" fill="freeze" calcMode="discrete"/>`
-    const rise = `<animateTransform attributeName="transform" type="translate" values="0 0;0 -14" dur="${d}s" begin="-${t}s" fill="freeze"/>`
+    const fade = `<animate attributeName="opacity" values="1;1;0" keyTimes="0;0.35;1" dur="${d}s" begin="-${t}s" fill="freeze" calcMode="spline" keySplines="0 0 1 1;0.4 0 1 1"/>`
+    const rise = `<animateTransform attributeName="transform" type="translate" values="0 0;0 3;0 -16" keyTimes="0;0.25;1" dur="${d}s" begin="-${t}s" fill="freeze" calcMode="spline" keySplines="${EASE};0.5 0 0.9 0.6"/>`
     const puff = [-24, -8, 8, 24]
-      .map((dx, i) => `<rect x="${dx}" y="${GY - 12}" width="${U}" height="${U}" fill="#aaa" opacity="0"><animate attributeName="opacity" values="0;0.9;0" dur="${d}s" begin="-${t}s" fill="freeze"/><animateTransform attributeName="transform" type="translate" values="0 0;${dx * 0.8} ${i % 2 ? -22 : -34}" dur="${d}s" begin="-${t}s" fill="freeze"/></rect>`)
+      .map((dx, i) => `<rect x="${dx}" y="${GY - 12}" width="${U}" height="${U}" fill="${i % 2 ? '#ffe9a0' : '#c8c8c8'}" opacity="0"><animate attributeName="opacity" values="0;0;0.9;0" keyTimes="0;0.3;0.55;1" dur="${d}s" begin="-${t}s" fill="freeze"/><animateTransform attributeName="transform" type="translate" values="0 0;0 0;${dx * 0.8} ${i % 2 ? -22 : -34}" keyTimes="0;0.3;1" dur="${d}s" begin="-${t}s" fill="freeze" calcMode="spline" keySplines="0 0 1 1;0.2 0.6 0.4 1"/></rect>`)
       .join('')
-    return `<g>${flicker}<g>${rise}${body}</g>${puff}</g>`
+    return `<g>${fade}<g>${rise}${body}</g>${puff}</g>`
   }
   const age = now - a.spawnAt
   if (a.spawnAt && age < ENTER_MS) {
     const t = (age / 1000).toFixed(2)
-    const pop = `<animateTransform attributeName="transform" type="scale" values="0 0;1.25 1.25;0.9 0.9;1 1" keyTimes="0;0.5;0.8;1" dur="${ENTER_MS / 1000}s" begin="-${t}s" fill="freeze"/>`
+    const pop = `<animateTransform attributeName="transform" type="scale" values="0 0;1.25 1.25;0.9 0.9;1 1" keyTimes="0;0.5;0.8;1" dur="${ENTER_MS / 1000}s" begin="-${t}s" fill="freeze" calcMode="spline" keySplines="0.2 0.8 0.4 1;${EASE};${EASE}"/>`
     return `<g transform="${feet}"><g>${pop}<g transform="translate(0 ${-GY})">${body}</g></g></g>`
   }
   return body
@@ -493,7 +495,7 @@ ${flourishSvg(a.personality, GY, a.flourishAt, now, BEHAVIOR, LIVELINESS)}
 ${meeting || lifestyle && (a.cue?.kind === 'tool-result' || a.cue?.kind === 'tool-error') ? '' : cueSvg(a.cue, GY, now, LIVELINESS)}
 ${tagSvg(a, compact)}${meeting ? talkBubbles(a, now) : ''}`
   if (meeting) return LIVELINESS === 'quiet' ? `<g transform="translate(${a.talk!.x0.toFixed(1)} 0)">${withEffects(a, inner, now)}</g>`
-    : `<g class="duet-motion" transform="translate(${xOf(a, now).toFixed(1)} 0)" style="--duet-x:${a.talk!.x0.toFixed(1)}px">${meetingMove(a, now)}${withEffects(a, inner, now)}</g>`
+    : `<g class="duet-motion" transform="translate(${a.talk!.x0.toFixed(1)} 0)" style="--duet-x:${a.talk!.x0.toFixed(1)}px">${meetingMove(a, now)}${withEffects(a, inner, now)}</g>`
   if (!a.isWorking) return `<g transform="translate(${Math.round(a.restX)} 0)">${withEffects(a, inner, now)}</g>`
   if (arrived) return `<g transform="translate(${posAt(a, (now - a.pathStart) / 1000).toFixed(1)} 0)">${withEffects(a, inner, now)}</g>`
 
@@ -508,8 +510,11 @@ ${tagSvg(a, compact)}${meeting ? talkBubbles(a, now) : ''}`
     values.push(`${s.to.toFixed(1)} 0`)
     times.push((s.t1 / a.total).toFixed(4))
   })
-  const walk = `<animateTransform attributeName="transform" type="translate" values="${values.join(';')}" keyTimes="${times.join(';')}" dur="${a.total.toFixed(2)}s" begin="-${sec.toFixed(2)}s" fill="freeze"/>`
-  return `<g transform="translate(${posAt(a, (now - a.pathStart) / 1000).toFixed(1)} 0)">${walk}${withEffects(a, inner, now)}</g>`
+  const splines = a.segs.map(() => EASE).join(';')
+  const walk = `<animateTransform attributeName="transform" type="translate" values="${values.join(';')}" keyTimes="${times.join(';')}" dur="${a.total.toFixed(2)}s" begin="-${sec.toFixed(2)}s" fill="freeze" calcMode="spline" keySplines="${splines}"/>`
+  const from = a.segs[0]?.from ?? a.restX
+  const to = a.segs[a.segs.length - 1]?.to ?? a.restX
+  return `<g transform="translate(${from.toFixed(1)} 0)">${walk}${withEffects(a, dust(to >= from ? 1 : -1) + inner, now)}</g>`
 }
 
 const contextualAction = (a: Avatar, now: number) => {
@@ -631,7 +636,7 @@ const THEMES: Record<string, Theme> = {
         return (
           rect(x, GY - U, 3 * U, U, '#d9461a') +
           rect(x, GY - 2 * U, 2 * U, U, '#ff8a1f') +
-          `<rect x="${x + U}" y="${GY - 3 * U}" width="${U}" height="${U}" fill="#ffd23f"><animate attributeName="opacity" values="1;0;1;1" dur="0.7s" calcMode="discrete" repeatCount="indefinite"/></rect>`
+          `<rect x="${x + U}" y="${GY - 3 * U}" width="${U}" height="${U}" fill="#ffd23f"><animate attributeName="opacity" values="1;0.35;0.8;1" dur="0.7s" repeatCount="indefinite"/></rect>`
         )
       }
       return rect(x, GY - 2 * U, 3 * U, 2 * U, '#d8d2c4') + rect(x + U, GY - U, U, U, '#2b2b2b') // a skull
@@ -958,7 +963,7 @@ const meetingMove = (a: Avatar, now: number) => {
   const t = a.talk as NonNullable<Avatar['talk']>
   const age = Math.max(0, now - t.at) / 1000
   const endX = a.isWorking ? posAt(a, (t.at + TALK_MS - a.pathStart) / 1000) : a.restX
-  return `<animateTransform attributeName="transform" type="translate" values="${t.x0.toFixed(0)} 0;${t.stand.toFixed(0)} 0;${t.stand.toFixed(0)} 0;${endX.toFixed(0)} 0" keyTimes="0;0.22;0.78;1" dur="${TALK_MS / 1000}s" begin="-${age.toFixed(2)}s" fill="freeze"/>`
+  return `<animateTransform attributeName="transform" type="translate" values="${t.x0.toFixed(0)} 0;${t.stand.toFixed(0)} 0;${t.stand.toFixed(0)} 0;${endX.toFixed(0)} 0" keyTimes="0;0.22;0.78;1" dur="${TALK_MS / 1000}s" begin="-${age.toFixed(2)}s" fill="freeze" calcMode="spline" keySplines="${EASE};0 0 1 1;${EASE}"/>`
 }
 
 // A merged pull request: fireworks and confetti over the whole scene, no text.
@@ -991,7 +996,32 @@ const celebration = (now: number) => {
   return `<g shape-rendering="crispEdges">${out}</g>`
 }
 
-const sceneSvg = (all: Avatar[], now: number) => `<svg xmlns="http://www.w3.org/2000/svg" class="${LOOK}" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}"><style>${LOOK_CSS}${MOTION_CSS}</style>
+// Kicked-up dust behind the feet of a walking avatar, in step with its legs.
+const dust = (dir: number) => LIVELINESS === 'quiet' ? '' : [0, 1]
+  .map(i => `<rect x="${-dir * (5 + i * 3) * U}" y="${GY - U}" width="${U}" height="${U}" fill="#b9ad9a" opacity="0"><animate attributeName="opacity" values="0;0.7;0" dur="0.4s" begin="${(i * 0.2).toFixed(1)}s" repeatCount="indefinite"/><animateTransform attributeName="transform" type="translate" values="0 0;${-dir * 6} -6" dur="0.4s" begin="${(i * 0.2).toFixed(1)}s" repeatCount="indefinite"/></rect>`)
+  .join('')
+
+// A loop with no begin of its own would restart from its first frame whenever
+// the scene is loaded again; phase it from the shared clock so it carries on.
+const phaseLoops = (svg: string, now: number) =>
+  svg.replace(/<(animateTransform|animate)(\s[^>]*?)(\/?)>/g, (tag, name: string, attrs: string, close: string) => {
+    if (!attrs.includes('repeatCount="indefinite"') || attrs.includes(' begin="-')) return tag
+    const dur = Number(/ dur="([\d.]+)s"/.exec(attrs)?.[1] ?? 0)
+    if (!dur) return tag
+    const own = / begin="([\d.]+)s"/.exec(attrs)
+    const offset = Number(own?.[1] ?? 0)
+    const phase = (((now / 1000 - offset) % dur) + dur) % dur
+    const rest = own ? attrs.replace(own[0], '') : attrs
+    return `<${name}${rest} begin="-${phase.toFixed(2)}s"${close}>`
+  })
+
+// Two draws of the same scene differ only in the clock offsets of their
+// animations; this is the markup with those taken out.
+const sceneKey = (svg: string) => svg.replace(/ begin="-?[\d.]+s"/g, '')
+
+const sceneSvg = (all: Avatar[], now: number) => phaseLoops(sceneMarkup(all, now), now)
+
+const sceneMarkup = (all: Avatar[], now: number) => `<svg xmlns="http://www.w3.org/2000/svg" class="${LOOK}" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}"><style>${LOOK_CSS}${MOTION_CSS}</style>
 ${sky()}
 ${scenery(now, all)}
 ${all.map(a => agentSvg(a, now, W / Math.max(1, all.length) < 115)).join('')}
@@ -1035,6 +1065,9 @@ export const register: Register = (on, options) => {
   let spawned = 0
   let isTerminal = false
   let nextFlourishAt = Infinity
+  // The desktop draws the scene in a frame that reloads on every new source,
+  // blanking for a moment; an unchanged scene keeps the markup already playing.
+  let shown = { key: '', source: '', at: 0 }
   let flourishIx = 0
 
   const make = (id: string, name: string, color: string): Avatar => {
@@ -1642,9 +1675,12 @@ export const register: Register = (on, options) => {
 
     if (e.surface === 'desktop' || e.surface === 'vscode') {
       const { Svg } = $.ui.resolve(e) as any
+      const source = sceneSvg(all, now)
+      const key = sceneKey(source)
+      if (key !== shown.key || now - shown.at > REUSE_MS) shown = { key, source, at: now }
       return (
         <Svg
-          source={sceneSvg(all, now)}
+          source={shown.source}
           alt={`Agents: ${all.map(a => `${a.name} (${a.personality.title}) ${a.isWorking ? bubbleText(a) : moodLabel(a) || 'idle'}: ${visualDescription(a,now)}${!hasLife(THEME) && stageLabel(a, now) ? '; ' + stageLabel(a, now) : ''}${a.cue ? '; ' + cueLabel(a.cue) : ''}`).join(', ')}`}
           width={W}
           height={H}
