@@ -54,12 +54,14 @@ type Avatar = {
   noticedAt: number // when it looked up at your prompt
   thanksAt: number // when your prompt thanked it
   longRun: boolean // a tool of its has run past LONG_MS: it has a cup of tea meanwhile
+  lane: number // its place among those at the same workshop station
+  laneAt: string // the station that place is at
   pathStart: number
   segs: Seg[]
   total: number
 }
 
-const VERSION = '0.12.0'
+const VERSION = '0.13.0'
 const COLORS = ['#ff8a1f', '#37c871', '#b45cff', '#2fa8ff', '#ffd23f', '#ff5c7a', '#e6e6e6']
 const LINGER_MS = 15000
 const MOOD_MS = 5000
@@ -97,10 +99,45 @@ const rng = (seed: number) => {
   }
 }
 
+// Everybody on the stage, so workshop actors can find a free place at a station.
+let CAST: () => Avatar[] = () => []
+
+// In the workshop thinking, planning, replying and delegating happen where an
+// actor stands; only a tool sends it to that tool's station.
+const IN_PLACE = new Set<WorkKind>(['think', 'plan', 'reply', 'dispatch'])
+const LANE = 52
+const DWELL_MS = 2500
+const LANES = [0, 1, -1, 2, -2, 3, -3, 4, -4]
+
+// Each actor takes a place nobody else stands at: beside its station for a
+// tool, where it already is (or the nearest free spot) for thinking.
+const freeNear = (a: Avatar, x: number) => !CAST().some(o => o !== a && Math.abs(standX(o) - x) < LANE - 2)
+const clampX = (x: number) => Math.max(30, Math.min(W - 30, x))
+const workshopSpot = (a: Avatar) => {
+  if (IN_PLACE.has(a.stationKind)) {
+    const spot = LANES.map(l => clampX(a.restX + l * LANE)).find(x => freeNear(a, x))
+    return spot ?? a.restX
+  }
+  const station = scenePlace(THEME, a.stationKind, W, 2)
+  const order = a.laneAt === station.title ? [a.lane, ...LANES] : LANES
+  const lane = order.find(l => freeNear(a, clampX(station.actorX + l * LANE))) ?? 0
+  a.lane = lane
+  a.laneAt = station.title
+  return clampX(station.actorX + lane * LANE)
+}
+
+// Arrived at a station, an actor stays a moment: a quick tool of another kind
+// is done where it stands rather than with a walk across the room.
+const dwelling = (a: Avatar, now: number) => {
+  if (THEME !== 'workshop' || !a.isWorking || IN_PLACE.has(a.stationKind) || a.total === 0) return false
+  const arrivedAt = a.pathStart + a.total * 1000
+  return now >= arrivedAt && now - arrivedAt < DWELL_MS
+}
+
 // Every world has an actual destination, never an unbounded working walk.
 const makePath = (a: Avatar) => {
   a.arrived = false
-  const destination = scenePlace(THEME, a.stationKind, W, a.seed, a.episode).actorX
+  const destination = THEME === 'workshop' && W >= 620 ? workshopSpot(a) : scenePlace(THEME, a.stationKind, W, a.seed, a.episode).actorX
   const pace = a.personality.pace * (BEHAVIOR === 'chaotic' ? 1.3 : BEHAVIOR === 'adventure' ? 1.1 : 0.9)
   const duration = Math.abs(destination - a.restX) < 1 ? 0 : Math.min(2.2, Math.max(0.8, Math.abs(destination - a.restX) / (SPEED * pace)))
   a.segs = [{ t0: 0, t1: duration, from: a.restX, to: destination }]
@@ -140,7 +177,8 @@ const stopWork = (a: Avatar, now: number, isWaiting = false) => {
 const setWorkKind = (a: Avatar, kind: WorkKind, now: number) => {
   // A real result finishes its visual action at the object before thinking
   // moves the actor elsewhere. Actual work status changes immediately.
-  const stationKind = hasLife(THEME) ? episodeKind(a.episode) : kind === 'think' && actionBeat(a.choreography, a.personality, now) ? a.choreography!.kind : kind
+  const stationKind = hasLife(THEME) ? episodeKind(a.episode) : dwelling(a, now) ? a.stationKind
+    : kind === 'think' && actionBeat(a.choreography, a.personality, now) ? a.choreography!.kind : kind
   const reroute = a.isWorking && a.stationKind !== stationKind
   if (reroute) a.restX = posAt(a, (now - a.pathStart) / 1000)
   a.actionSequence = a.workKind === kind ? a.actionSequence : 0
@@ -539,7 +577,7 @@ const shadowSvg = (moving: boolean) => {
 }
 
 const tagSvg = (a: Avatar, compact = false) => {
-  const limit = compact ? 8 : 18
+  const limit = compact ? 6 : 18
   const name = a.name.length > limit ? a.name.slice(0, limit - 1) + '…' : a.name
   const w = name.length * 5.6 + 10
   const top = GY - 10 * U - 20
@@ -1169,12 +1207,17 @@ const phaseLoops = (svg: string, now: number) =>
 // animations; this is the markup with those taken out.
 const sceneKey = (svg: string) => svg.replace(/ begin="-?[\d.]+s"/g, '')
 
+// Where an actor will stand once its walk is over.
+const standX = (a: Avatar) => a.talk ? a.talk.stand : a.isWorking && a.segs.length ? a.segs[a.segs.length - 1]!.to : a.restX
+// Another actor stands close enough that full name tags would overlap.
+const crowded = (a: Avatar, all: Avatar[]) => all.some(o => o !== a && Math.abs(standX(o) - standX(a)) < 110)
+
 const sceneSvg = (all: Avatar[], now: number) => phaseLoops(sceneMarkup(all, now), now)
 
 const sceneMarkup = (all: Avatar[], now: number) => `<svg xmlns="http://www.w3.org/2000/svg" class="${LOOK}" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}"><style>${LOOK_CSS}${MOTION_CSS}</style>
 ${sky()}${daylight(now)}
 ${scenery(now, all)}${weariness()}
-${all.map(a => agentSvg(a, now, W / Math.max(1, all.length) < 115)).join('')}
+${all.map(a => agentSvg(a, now, W / Math.max(1, all.length) < 115 || crowded(a, all))).join('')}
 ${celebration(now)}
 </svg>`
 
@@ -1278,6 +1321,8 @@ export const register: Register = (on, options) => {
       noticedAt: 0,
       thanksAt: 0,
       longRun: false,
+      lane: 0,
+      laneAt: '',
       pathStart: 0,
       segs: [],
       total: 0,
@@ -1285,6 +1330,7 @@ export const register: Register = (on, options) => {
   }
 
   const mainAv = make('main', 'main', COLORS[0] ?? '#ff8a1f')
+  CAST = () => [mainAv, ...agents.values()]
 
   // Both participants share the same lifetime. Cancel from their visible
   // positions, so a real tool/approval can take over without a teleport.
@@ -1445,7 +1491,10 @@ export const register: Register = (on, options) => {
           setWorkKind(a,a.workKind,now)
           changed = true
         }
-        if (!hasLife(THEME) && a.isWorking && a.stationKind !== a.workKind && !actionBeat(a.choreography, a.personality, now)) {
+        // A finished action closes at its object first; a running tool held back
+        // by the stay at the last station goes to its own once the stay is over.
+        const heldBack = [...a.activeTools.values()].some(t => t.kind === a.workKind)
+        if (!hasLife(THEME) && a.isWorking && a.stationKind !== a.workKind && (heldBack || !actionBeat(a.choreography, a.personality, now)) && !dwelling(a, now)) {
           setWorkKind(a, a.workKind, now)
           changed = true
         }

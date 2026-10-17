@@ -57,8 +57,26 @@ export function preview(width, behavior, look, filled, mixed = false, beatAge = 
   }
   return sceneSvg(duetKind ? cast.slice(0, 2) : cast, now);
 }
+export function crowd(width) {
+  W = width; H = 156; GY = 142; THEME = 'workshop'; SKY = false; BEHAVIOR = 'cozy'; LIVELINESS = 'normal'; LOOK = 'dark'; TIRED = 0;
+  const now = 120000;
+  const kinds = ['craft', 'craft', 'craft', 'run', 'run', 'think'];
+  const cast = [];
+  CAST = () => cast;
+  kinds.forEach((kind, i) => {
+    const p = PERSONALITIES[i % PERSONALITIES.length];
+    const a = { id: i ? 'w' + i : 'main', name: 'Implement T' + (19 + i) + ' anchors', skin: 'robot', personality: p, color: COLORS[i % COLORS.length],
+      isWorking: true, waiting: false, permissionTokens: new Set(), cue: null, workKind: kind, stationKind: kind, episode: episodeFor(p, 0, now - 4000),
+      phase: kind === 'think' ? 'thinking' : 'tool', actionSequence: 0, tool: kind === 'craft' ? 'Edit' : kind === 'run' ? 'Bash' : '', choreography: null,
+      action: '', thought: '', mood: '', talk: null, spawnAt: 0, leaveAt: 0, restX: 60 + i * 110, seed: i + 1, lane: 0, laneAt: '',
+      noticedAt: 0, thanksAt: 0, longRun: false, pathStart: now - 12000, segs: [], total: 0, flourishAt: null, activeTools: new Map() };
+    cast.push(a);
+    makePath(a);
+  });
+  return sceneSvg(cast, now);
+}
 `
-const { preview } = await import(`data:text/javascript;base64,${Buffer.from(prefix + fixture).toString('base64')}`)
+const { preview, crowd } = await import(`data:text/javascript;base64,${Buffer.from(prefix + fixture).toString('base64')}`)
 const out = resolve(root, 'docs/previews')
 await mkdir(out, { recursive: true })
 const worldNames = ['workshop','meadow','home','lava','sakura','snow','night','desert','space','office','beach','city','ocean','halloween']
@@ -76,6 +94,7 @@ const storyPanels = [
   ['Moods: done, failed, waiting, thinking', preview(751, 'cozy', 'dark', true, false, null, null, 1500, false, 'night', true)],
   ['Session reactions: prompt, tea, thanks, tired', preview(751, 'cozy', 'dark', true, false, null, null, 1500, false, 'workshop', false, true)],
   ['Session reactions in the meadow', preview(751, 'cozy', 'dark', true, true, null, null, 1500, false, 'meadow', false, true)],
+  ['Six at work: three editing, two running, one thinking', crowd(751)],
   ['Moods in the meadow', preview(751, 'cozy', 'dark', true, true, null, null, 1500, false, 'meadow', true)],
   ['Narrow, light, quiet handoff', preview(360, 'cozy', 'light', false, true, null, 'message', 2600, true)],
 ]
