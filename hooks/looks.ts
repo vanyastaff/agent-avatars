@@ -12,8 +12,19 @@ export const WEAR_CHOICES: Record<string, string> = {
   pencil: 'meticulous', satchel: 'curious', cape: 'dramatic', nightcap: 'sleepy', beanie: 'shy',
   wizard: 'wizard', detective: 'detective', crown: 'crown', headphones: 'headphones', none: 'none',
 }
-export const EMOTES = ['dance', 'wave', 'cheer', 'love'] as const
+// What an agent can do. The solo ones play on its own avatar; the next four need
+// a `target`, another agent on the scene; a party makes everyone dance.
+export const EMOTES = ['dance', 'wave', 'cheer', 'love', 'jump', 'nap', 'think', 'facepalm'] as const
 export type Emote = typeof EMOTES[number]
+export const TARGETED = ['hug', 'high_five', 'poke', 'wave_at'] as const
+export type Targeted = typeof TARGETED[number]
+export const ACTIONS = [...EMOTES, ...TARGETED, 'party'] as const
+export type Action = typeof ACTIONS[number]
+// How a targeted action plays out: the actor's gesture and the answer it gets.
+export const EXCHANGE: Record<Targeted, [Emote | null, Emote]> = {
+  hug: ['love', 'love'], high_five: ['cheer', 'cheer'], poke: [null, 'jump'], wave_at: ['wave', 'wave'],
+}
+export const SAY_LIMIT = 28
 export type Look = { skin?: string; color?: string; wear?: string }
 
 export const TOOL = 'avatar'
@@ -25,21 +36,38 @@ const words = (o: object | readonly string[]) => (Array.isArray(o) ? o : Object.
 
 export const avatarTool = {
   name: TOOL,
-  description: 'Change how you look in the pixel-art avatar scene the user watches above the prompt, or make a gesture there. '
-    + 'Purely cosmetic: it changes nothing in the session and nobody reads it as a status. Use it rarely and only for fun, '
-    + 'for example to dress for a new kind of task or to celebrate a finished one; never let it delay the work. '
-    + `Skins: ${words(SKIN_CHOICES)}. Colors: ${words(COLOR_CHOICES)}. Outfits: ${words(WEAR_CHOICES)}. Emotes: ${words(EMOTES)}. `
-    + 'Every field is optional. Your choice of look is remembered for next time.',
+  description: 'Your pixel-art avatar in the little scene the user watches above the prompt: change how it looks, say a short line in a speech bubble, or act. '
+    + 'Purely for fun: it changes nothing in the session and nobody reads it as a status. Use it now and then at natural moments '
+    + '(starting, finding something, finishing), a few times per task at most, and never let it delay the work. '
+    + `Skins: ${words(SKIN_CHOICES)}. Colors: ${words(COLOR_CHOICES)}. Outfits: ${words(WEAR_CHOICES)}. `
+    + `Actions: ${words(EMOTES)}; ${words(TARGETED)} need a target (another agent's name, or "main"); party makes everyone dance. `
+    + `say: up to ${SAY_LIMIT} characters, plain text. Every field is optional. Your look is remembered for next time.`,
   inputSchema: {
     type: 'object',
     properties: {
       skin: { type: 'string', enum: [...SKIN_CHOICES] },
       color: { type: 'string', enum: Object.keys(COLOR_CHOICES) },
       outfit: { type: 'string', enum: Object.keys(WEAR_CHOICES) },
-      emote: { type: 'string', enum: [...EMOTES] },
+      action: { type: 'string', enum: [...ACTIONS] },
+      target: { type: 'string', description: 'For hug, high_five, poke and wave_at: the other agent\'s name, or "main".' },
+      say: { type: 'string', maxLength: 60, description: `A short line for a speech bubble; cut to ${SAY_LIMIT} characters.` },
     },
   },
   isDeferred: true,
+}
+
+// What every agent is told when it starts, so it knows the avatar is there.
+export const avatarNote = `You have a pixel-art avatar in a little scene the user watches above the prompt (the agent-avatars mod). `
+  + `With the mcp__agent-avatars__${TOOL} tool (load it through tool search) you can change its look, say a short line in a speech bubble, `
+  + `or act: ${words(EMOTES)}, ${words(TARGETED)} another agent, or throw a party. It is only for fun and changes nothing in the session: `
+  + `use it now and then at natural moments, a few times per task at most, and never let it delay the work.`
+
+// A line for the bubble: printable text on one line, cut to fit.
+export const cleanSay = (value: unknown) => {
+  if (typeof value !== 'string') return ''
+  const text = value.replace(/[\u0000-\u001f\u007f-\u009f\u2028\u2029]/g, ' ').replace(/\s+/g, ' ').trim()
+  const chars = [...text]
+  return chars.length > SAY_LIMIT ? chars.slice(0, SAY_LIMIT - 1).join('') + '…' : text
 }
 
 const pick = (value: unknown, allowed: readonly string[]) => {
@@ -61,11 +89,14 @@ export const readToolInput = (input: Record<string, unknown>) => {
   const skin = field('skin', SKIN_CHOICES)
   const color = field('color', Object.keys(COLOR_CHOICES))
   const wear = field('outfit', Object.keys(WEAR_CHOICES))
-  const emote = field('emote', EMOTES) as Emote | undefined
+  const action = field('action', ACTIONS) as Action | undefined
+  const target = typeof input.target === 'string' ? input.target.trim().slice(0, 64) : ''
+  const say = cleanSay(input.say)
+  if (input.say !== undefined && !say) bad.push('say')
   if (skin) look.skin = skin
   if (color) look.color = color
   if (wear) look.wear = wear
-  return { look, emote, bad }
+  return { look, action, target, say, bad }
 }
 
 export const isEmpty = (look: Look) => !look.skin && !look.color && !look.wear

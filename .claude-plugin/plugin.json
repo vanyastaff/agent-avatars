@@ -94,7 +94,7 @@
     "looks": {
       "type": "string",
       "title": "Agents choose their looks",
-      "description": "fixed: looks follow Character and personality. ai: a small model dresses each new subagent for its task (one small request per agent, uses your quota), and agents get an avatar tool to change their skin, colour or hat and to dance, wave or cheer. Their choices are remembered.",
+      "description": "fixed: looks follow Character and personality. ai: a small model dresses each new subagent for its task (one small request per agent, uses your quota), and every agent is told it has an avatar tool to change its look, say a short line, hug or high-five another agent, dance or throw a party. Their looks are remembered.",
       "default": "fixed",
       "options": [
         "fixed",

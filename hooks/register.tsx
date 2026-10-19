@@ -1,6 +1,6 @@
 import type { Register } from 'claude-code'
-import { avatarTool, COLOR_CHOICES, WEAR_CHOICES, TOOL_GAP_MS, STORE_KEY, readToolInput, readLookReply, readStored, lookQuestion, lookKey, isEmpty, describeLook } from './looks.ts'
-import type { Emote, Look } from './looks.ts'
+import { avatarTool, avatarNote, COLOR_CHOICES, WEAR_CHOICES, TOOL_GAP_MS, STORE_KEY, EMOTES, EXCHANGE, readToolInput, readLookReply, readStored, lookQuestion, lookKey, isEmpty, describeLook } from './looks.ts'
+import type { Emote, Look, Targeted } from './looks.ts'
 import { PERSONALITIES, personalitySvg, kindForTool, performanceFor, propSvg, flourishInterval, flourishSvg, FLOURISH_MS, MOTION_CSS, CUE_MS, cueLabel, cueSvg, actionBeat, actionSvg, actionPose, duetBeat, duetSvg, DUET_MS } from './theater.ts'
 import type { Personality, Behavior, Liveliness, WorkKind, SceneCue, ActionSequence, DuetKind } from './theater.ts'
 import { hasScenePlaces, scenePlace, sceneAction, sceneObjectsSvg } from './worlds.ts'
@@ -58,6 +58,7 @@ type Avatar = {
   wear: string // the outfit it chose for itself; '' wears its personality's
   restyledAt: number // when it last changed its look, for a puff of pixels
   emote: { kind: Emote; at: number } | null // a gesture it chose to make
+  said: { text: string; at: number } | null // a line it chose to say
   longRun: boolean // a tool of its has run past LONG_MS: it has a cup of tea meanwhile
   lane: number // its place among those at the same workshop station
   laneAt: string // the station that place is at
@@ -85,6 +86,8 @@ const THANKS_MS = 2600
 const FRESH_MS = 2200
 const EMOTE_MS = 3000
 const RESTYLE_MS = 900
+const SAY_MS = 6000
+const PARTY_GAP_MS = 60000
 const LONG_MS = 20000
 const THANKS = /спасиб|благодар|thank|thx|merci|danke|gracias/i
 const EYE = '#2b2b2b'
@@ -657,6 +660,7 @@ const glyph = (rows: string[], x: number, y: number, size: number, fill: string)
 const HEART = ['.#.#.', '#####', '#####', '.###.', '..#..']
 const NOTE = ['..##', '..#.', '..#.', '###.', '##..']
 const HAND = ['#.#.#', '#####', '#####', '.###.']
+const ZED = ['####', '..#.', '.#..', '####']
 const QUESTION = ['.###.', '#...#', '...#.', '..#..', '.....', '..#..']
 
 // How an avatar feels, beside its head: hearts when it is done, a rain cloud when
@@ -712,6 +716,9 @@ const reactionSvg = (a: Avatar, now: number) => {
     if (kind === 'love') s += hearts(t)
     if (kind === 'dance') s += `<g shape-rendering="crispEdges">${[-1, 1].map((side, i) => `<g opacity="0"><animate attributeName="opacity" values="0;1;1;0" keyTimes="0;0.15;0.8;1" ${t}/><animateTransform attributeName="transform" type="translate" values="0 0;${side * 6} -18" ${t}/>${glyph(NOTE, side * (8 * U + 6) - 6, head - 4 - i * 6, 2, i ? '#2fa8ff' : '#b45cff')}</g>`).join('')}</g>`
     if (kind === 'wave') s += `<g shape-rendering="crispEdges" transform="translate(${7 * U + 8} ${head + 6})"><g opacity="0"><animate attributeName="opacity" values="0;1;1;0" keyTimes="0;0.1;0.85;1" ${t}/><animateTransform attributeName="transform" type="rotate" values="0;-25;0;25;0;-25;0;25;0" ${t}/>${glyph(HAND, -5, -10, 2, '#ffd9b8')}</g></g>`
+    if (kind === 'nap') s += `<g shape-rendering="crispEdges">${[0, 1, 2].map(i => `<g opacity="0"><animate attributeName="opacity" values="0;0;0.9;0" keyTimes="0;${(i * 0.25).toFixed(2)};${(i * 0.25 + 0.15).toFixed(2)};1" ${t}/><animateTransform attributeName="transform" type="translate" values="0 0;${8 + i * 4} -16" ${t}/>${glyph(ZED, 7 * U + i * 6, head + 4 - i * 7, i ? 2 : 2.5, '#b8c7d0')}</g>`).join('')}</g>`
+    if (kind === 'think') s += `<g>${[0, 1, 2].map(i => `<circle cx="${-8 * U - 2 + i * 5}" cy="${head - 4 - i * 5}" r="${2.2 + i * 1.2}" fill="#f2f2f2" stroke="#9a9a9a" stroke-width="0.8" opacity="0"><animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;${(i * 0.15).toFixed(2)};${(i * 0.15 + 0.1).toFixed(2)};0.85;1" ${t}/></circle>`).join('')}</g>`
+    if (kind === 'facepalm') s += `<g shape-rendering="crispEdges" opacity="0"><animate attributeName="opacity" values="0;1;1;0" keyTimes="0;0.1;0.85;1" ${t}/><animateTransform attributeName="transform" type="translate" values="10 8;0 0;0 0" keyTimes="0;0.15;1" ${t}/>${glyph(HAND, -5, head + 2 * U, 2, '#d99a62')}</g>`
     if (kind === 'cheer') s += `<g fill="#ffd23f" shape-rendering="crispEdges">${[[-26, -4], [24, -10], [-12, -30], [12, -26], [0, -40]].map(([dx, dy], i) => `<g opacity="0"><animate attributeName="opacity" values="0;1;0" keyTimes="0;${(0.1 + i * 0.12).toFixed(2)};1" ${t}/><rect x="${dx! - 1}" y="${head + dy! - 4}" width="2" height="8"/><rect x="${dx! - 4}" y="${head + dy! - 1}" width="8" height="2"/></g>`).join('')}</g>`
   }
   if (a.restyledAt && now - a.restyledAt < RESTYLE_MS) {
@@ -767,6 +774,7 @@ const tagSvg = (a: Avatar, compact = false) => {
     return `<g shape-rendering="crispEdges"><rect x="${-bw / 2}" y="${by}" width="${bw}" height="12" fill="#fff" stroke="${stroke}" stroke-width="1"/><rect x="-2" y="${by + 12}" width="4" height="3" fill="#fff"/></g>
 <text x="0" y="${by + 9}" text-anchor="middle" font-family="${MONO}" font-size="9" fill="#222">${esc(label)}</text>`
   }
+  if (a.said && !a.leaveAt) return s + bubble(a.said.text, a.color) // a line the agent chose, in any world
   if (compact && a.id !== 'main') return s
   if (hasLife(THEME)) return s // work status stays in the title/alt; life is the foreground
   if (a.isWorking) {
@@ -806,6 +814,12 @@ const withEffects = (a: Avatar, body: string, now: number) => {
     const t = ((now - a.restyledAt) / 1000).toFixed(2)
     const squeeze = `<animateTransform attributeName="transform" type="scale" values="1 1;1.2 0.2;0.9 1.15;1 1" keyTimes="0;0.35;0.7;1" dur="${RESTYLE_MS / 1000}s" begin="-${t}s" fill="freeze" calcMode="spline" keySplines="${EASE};0.2 0.8 0.4 1;${EASE}"/>`
     return `<g transform="${feet}"><g>${squeeze}<g transform="translate(0 ${-GY})">${body}</g></g></g>`
+  }
+  // a jump of its own choosing, or the start when it was poked
+  if (a.emote?.kind === 'jump' && now - a.emote.at < EMOTE_MS && LIVELINESS !== 'quiet') {
+    const t = ((now - a.emote.at) / 1000).toFixed(2)
+    const hop = `<animateTransform attributeName="transform" type="translate" values="0 0;0 -16;0 0;0 -10;0 0;0 0" keyTimes="0;0.12;0.24;0.34;0.44;1" dur="${EMOTE_MS / 1000}s" begin="-${t}s" fill="freeze" calcMode="spline" keySplines="0.2 0.8 0.4 1;0.6 0 0.8 0.2;0.2 0.8 0.4 1;0.6 0 0.8 0.2;0 0 1 1"/>`
+    return `<g>${hop}${body}</g>`
   }
   // a dance of its own choosing: it sways from foot to foot
   if (a.emote?.kind === 'dance' && now - a.emote.at < EMOTE_MS && LIVELINESS !== 'quiet') {
@@ -1592,6 +1606,7 @@ export const register: Register = (on, options) => {
       wear: '',
       restyledAt: 0,
       emote: null,
+      said: null,
       longRun: false,
       lane: 0,
       laneAt: '',
@@ -1608,6 +1623,7 @@ export const register: Register = (on, options) => {
   let stored: Record<string, Look> = {}
   const subagentTypes = new Map<string, string>()
   const lastStyled = new Map<string, number>()
+  let partyAt = -Infinity
   const dress = (a: Avatar, look: Look, now: number) => {
     if (look.skin && SKINS[look.skin]) a.skin = look.skin
     if (look.color && COLOR_CHOICES[look.color]) a.color = COLOR_CHOICES[look.color]!
@@ -1785,6 +1801,7 @@ export const register: Register = (on, options) => {
         if (a.thanksAt && now - a.thanksAt >= THANKS_MS) { a.thanksAt = 0; changed = true }
         if (a.restyledAt && now - a.restyledAt >= RESTYLE_MS) { a.restyledAt = 0; changed = true }
         if (a.emote && now - a.emote.at >= EMOTE_MS) { a.emote = null; changed = true }
+        if (a.said && now - a.said.at >= SAY_MS) { a.said = null; changed = true }
         if (hasLife(THEME) && a.isWorking && !a.waiting && !a.permissionTokens.size && !a.mood && !a.talk && now - a.episode.at >= episodeSpan(LIVELINESS)) {
           a.episode = episodeFor(a.personality,a.episode.serial + 1,now)
           setWorkKind(a,a.workKind,now)
@@ -1851,7 +1868,7 @@ export const register: Register = (on, options) => {
   })
 
   on('agent.spawn', async ($, e, next) => {
-    const res = await next(e)
+    const res = await next(LOOKS && e.prompt ? { ...e, prompt: e.prompt + '\n\n' + avatarNote } : e)
     if ('agentId' in res && res.agentId) {
       const now = await $.clock.now()
       const existing = agents.get(res.agentId)
@@ -1963,10 +1980,20 @@ export const register: Register = (on, options) => {
     const now = await $.clock.now()
     const a = e.agentId ? agents.get(e.agentId) : mainAv
     if (!LOOKS || !a || a.leaveAt) return { result: 'Your avatar is not on the scene right now.' }
-    const { look, emote, bad } = readToolInput(e as unknown as Record<string, unknown>)
-    if (isEmpty(look) && !emote) return { result: bad.length ? `Unknown ${bad.join(', ')}; nothing changed. ${avatarTool.description}` : 'Nothing to change.' }
+    const { look, action, target, say, bad } = readToolInput(e as unknown as Record<string, unknown>)
+    if (isEmpty(look) && !action && !say) return { result: bad.length ? `Unknown ${bad.join(', ')}; nothing changed. ${avatarTool.description}` : 'Nothing to change.' }
     const last = lastStyled.get(a.id) ?? -Infinity
-    if (now - last < TOOL_GAP_MS) return { result: 'Your avatar just changed; it can change again in a little while. Carry on with the task.' }
+    if (now - last < TOOL_GAP_MS) return { result: 'Your avatar just did something; it can again in a little while. Carry on with the task.' }
+    const cast = [mainAv, ...agents.values()].filter(x => !x.leaveAt)
+    const others = cast.filter(x => x !== a)
+    const names = others.map(x => x === mainAv ? 'main' : x.handle || x.name)
+    let peer: Avatar | undefined
+    if (action && action in EXCHANGE) {
+      const wanted = target.toLowerCase()
+      peer = others.find(x => (x === mainAv ? 'main' : '') === wanted || x.handle.toLowerCase() === wanted || x.name.toLowerCase() === wanted || x.id === target)
+      if (!peer) return { result: `${action} needs a target on the scene. ${names.length ? 'Agents there now: ' + names.join(', ') + '.' : 'Nobody else is on the scene right now.'}` }
+    }
+    if (action === 'party' && now - partyAt < PARTY_GAP_MS) return { result: 'The crew just had a party; try again in a minute. Carry on with the task.' }
     lastStyled.set(a.id, now)
     if (!isEmpty(look)) {
       dress(a, look, now)
@@ -1980,10 +2007,32 @@ export const register: Register = (on, options) => {
         }
       }
     }
-    if (emote) a.emote = { kind: emote, at: now }
+    if (say) a.said = { text: say, at: now }
+    if (action && (EMOTES as readonly string[]).includes(action)) a.emote = { kind: action as Emote, at: now }
+    if (peer) {
+      const [mine, theirs] = EXCHANGE[action as Targeted]
+      if (mine) a.emote = { kind: mine, at: now }
+      peer.emote = { kind: theirs, at: now }
+      if (action === 'poke') peer.noticedAt = now
+    }
+    if (action === 'party') {
+      partyAt = now
+      for (const x of cast) x.emote = { kind: 'dance', at: now }
+    }
     $.ui.invalidate('ui.render')
-    const done = [isEmpty(look) ? '' : 'now ' + describeLook(look), emote ? emote + 's' : ''].filter(Boolean).join(' and ')
-    return { result: `Done: your avatar is ${done}.${bad.length ? ` Ignored unknown ${bad.join(', ')}.` : ''}` }
+    const done = [
+      isEmpty(look) ? '' : 'your avatar is now ' + describeLook(look),
+      say ? `it says "${say}"` : '',
+      peer ? `it did ${action} with ${peer === mainAv ? 'main' : peer.handle || peer.name}` : action === 'party' ? 'everyone is dancing' : action ? `it does ${action}` : '',
+    ].filter(Boolean).join('; ')
+    return { result: `Done: ${done}.${bad.length ? ` Ignored unknown ${bad.join(', ')}.` : ''}` }
+  })
+
+  // Every agent is told it has an avatar: the main one in its system prompt,
+  // a subagent at the end of its task.
+  on('prompt.compose', async ($, e, next) => {
+    const res = await next(e)
+    return LOOKS ? { sections: [...res.sections, { id: 'agent-avatars:avatar', text: avatarNote, scope: 'session' as const }] } : res
   })
 
   // Dressing up never needs the person's approval.
