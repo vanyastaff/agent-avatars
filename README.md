@@ -7,6 +7,8 @@ A [Claude Code mod](https://code.claude.com/docs/en/plugins/mods/overview) that 
 - **Enter and exit:** a new subagent pops in with a bounce; a finished one flickers, floats up and vanishes in a puff of pixels after 15 seconds.
 
 ![An agent appears, works and leaves](docs/spawn-and-leave.gif)
+- **Habits:** robots glow an antenna lamp (amber at rest, green at work, pink when happy, red when sad), cats flick their tail tip, dragons beat their wings and puff smoke (sparks when happy), anime kids have a bouncy cowlick.
+- **Rare visitors:** every world has a guest that wanders through now and then: a rabbit in the meadow, a mouse at home, an ember bird over the lava, a crane over the blossoms, a sliding penguin, an owl, a tumbleweed, a UFO, a robot vacuum, a crab, a stray cat, a whale in the deep, bats on Halloween and a helper drone in the workshop. `lively` brings them more often; `quiet` keeps them away.
 - **Scenery:** a themed little world on a transparent background (or with a sky, if you like), with drifting pixel clouds.
 
 ![Robots working at an office](docs/office.gif)
