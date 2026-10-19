@@ -1260,9 +1260,10 @@ export const register: Register = (on, options) => {
   let nextFlourishAt = Infinity
   // The desktop draws the scene in a frame that reloads on every new source,
   // blanking for a moment; an unchanged scene keeps the markup already playing.
-  // A real change is double-buffered over two frames, the second laid over the
-  // first: it loads into the frame out of sight and is shown once that frame has
-  // had SETTLE_MS to paint, so the frame in view never reloads. A burst of
+  // A real change is double-buffered over two frames in one place, only one of
+  // them drawn, since a transparent sky would show the other through it: it
+  // loads into the frame out of sight and is shown once that frame has had
+  // SETTLE_MS to paint, so the frame in view never reloads. A burst of
   // changes reloads the hidden frame again unseen; after STALE_MS of lagging it
   // is left to settle and the latest change waits for the next swap.
   type Frame = { key: string; source: string; at: number }
@@ -1941,8 +1942,8 @@ export const register: Register = (on, options) => {
       const alt = `${LIVE_ALT}${all.map(a => `${a.name} (${a.personality.title}) ${a.isWorking ? bubbleText(a) : moodLabel(a) || 'idle'}: ${visualDescription(a,now)}${!hasLife(THEME) && stageLabel(a, now) ? '; ' + stageLabel(a, now) : ''}${a.cue ? '; ' + cueLabel(a.cue) : ''}`).join(', ')}`
       const frame = (i: number) => <Svg source={frames[i]!.source} alt={i === live ? alt : 'The agents scene, a moment ago'} width={W} height={H} isInteractive />
       return (
-        <Box position="relative">
-          <Box key="scene-0">{frame(0)}</Box>
+        <Box position="relative" width={W} height={H}>
+          <Box key="scene-0" position="absolute" top={0} left={0} display={seen === 0 ? 'flex' : 'none'}>{frame(0)}</Box>
           {frames[1].source ? <Box key="scene-1" position="absolute" top={0} left={0} display={seen === 1 ? 'flex' : 'none'}>{frame(1)}</Box> : null}
         </Box>
       )
