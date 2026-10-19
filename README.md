@@ -176,7 +176,7 @@ Agents react to how things end, without reading tool calls or prompts:
 
 The main character's mood clears after a few seconds; a subagent keeps it until it leaves the scene.
 
-![Waiting, done, stopped, your turn, failed](docs/moods.gif)
+![Done, failed, waiting and thinking](docs/moods.gif)
 
 ### Agents talking to each other
 
