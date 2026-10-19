@@ -1,6 +1,6 @@
 {
   "name": "agent-avatars",
-  "version": "0.16.0",
+  "version": "0.17.0",
   "description": "A pixel-art crew for Claude Code: distinct personalities and worlds with their own pastimes, gatherings and real-event reactions. Choose cozy, chaotic or adventure behavior and how lively the scene feels.",
   "author": {
     "name": "vanyastaff"
@@ -88,6 +88,16 @@
       "options": [
         "static",
         "action",
+        "ai"
+      ]
+    },
+    "looks": {
+      "type": "string",
+      "title": "Agents choose their looks",
+      "description": "fixed: looks follow Character and personality. ai: a small model dresses each new subagent for its task (one small request per agent, uses your quota), and every agent is told it has an avatar tool to change its look, say a short line, hug or high-five another agent, dance or throw a party. Their looks are remembered.",
+      "default": "fixed",
+      "options": [
+        "fixed",
         "ai"
       ]
     },

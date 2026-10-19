@@ -160,6 +160,26 @@ reasoning are not used for the decorative event reactions.
 
 `short` turns "Implement T9 Switch and NavigationBar" into "T9 Switch…". `ai` calls a small model (Haiku, a few tokens per reply): one request per new agent for the name, and at most one every 12 seconds per working agent for the bubble. Those requests use your Claude usage, which is why `ai` is opt-in. Everything is `static` by default, and nothing calls a model unless you switch it on. The reply is only ever drawn as plain text.
 
+### Agents choose their looks
+
+| Option | Values | Default |
+| --- | --- | --- |
+| `looks` (Agents choose their looks) | `fixed` (looks follow `skin` and personality), `ai` (agents dress themselves) | `fixed` |
+
+With `ai`, a small model (Haiku, one request per new subagent) dresses each subagent for its task: a bug hunter may turn up as a blue cat in a deerstalker.
+
+Every agent is also told, when it starts, that it has an avatar, and gets an `avatar` tool it can call whenever it wants:
+
+- **Look:** a new skin (`robot`, `cat`, `dragon`, `anime`), a colour, or an outfit (the five personality outfits plus `wizard`, `detective`, `crown`, `headphones` or `none`). The character squeezes, puffs and comes back in its new clothes.
+- **Say:** a short line (up to 28 characters) in a speech bubble over its head, such as "found it!". It is drawn only as plain text.
+- **Act alone:** `dance`, `wave`, `cheer`, `love`, `jump`, `nap`, `think` or `facepalm`.
+- **Act with someone:** `hug`, `high_five`, `poke` or `wave_at` another agent by name (or `main`), and that agent answers with hearts, a cheer, a startled jump or a wave.
+- **Party:** the whole crew dances, at most once a minute.
+
+The tool is purely cosmetic and needs no approval. It sits behind tool search, the note each agent gets is a few lines, and each agent can use it once every 20 seconds. Only values from these lists are drawn. The main agent's look and each subagent type's favourite are remembered in the mod's store for the next session. A remembered favourite replaces the Haiku request.
+
+![Chosen outfits, lines and gestures](docs/looks.png)
+
 On a light theme the pale things that would vanish (clouds, stars, snow, gulls) switch to a darker blue-grey, so the transparent scenes stay readable on both.
 
 Each agent keeps its own colour (for the anime characters that is the hair colour), so you can tell them apart in any skin.
