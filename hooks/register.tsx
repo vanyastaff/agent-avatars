@@ -457,27 +457,62 @@ const SKIN_IDS = Object.keys(SKINS)
 const EYES_HAPPY = ['....E....E....', '...E.E..E.E...']
 const EYES_SAD = ['...E.E..E.E...', '....E....E....', '...E.E..E.E...']
 
-const robotBody = (skin: Skin, color: string, isWorking: boolean, mood = '', moving = isWorking) => {
+// A body that breathes, blinks, leans into its walk and squashes as it lands.
+// `seed` spreads each actor's loops over their cycles, so a crew never blinks,
+// breathes or bounces in unison; `dir` is the way it walks (1 right, -1 left).
+const robotBody = (skin: Skin, color: string, isWorking: boolean, mood = '', moving = isWorking, seed = 0, dir = 1) => {
   const c = skin.palette(color)
+  const quiet = LIVELINESS === 'quiet'
+  const lively = LIVELINESS === 'lively'
+  // a positive begin is this actor's own offset; phaseLoops keeps it across redraws
+  const at = (dur: number) => `begin="${(((seed * 0.618) % 1) * dur).toFixed(2)}s"`
+  const ease = (n: number) => Array(n).fill(EASE).join(';')
+  // a scale about the feet, so squash and stretch keep the actor on the ground
+  const feet = (anim: string, inner: string) => `<g transform="translate(${7 * U} ${10 * U})"><g>${anim}<g transform="translate(${-7 * U} ${-10 * U})">${inner}</g></g></g>`
+  const blink = (dur: number) => `<animateTransform attributeName="transform" type="scale" values="1 1;1 1;1 0.15;1 1" keyTimes="0;0.9;0.94;1" dur="${dur}s" ${at(dur)} repeatCount="indefinite"/>`
+  // eyes close about their own row, not the top of the body
+  const eyeY = (skin.eyeOy + 0.5) * U
+  const blinking = (rows: string[], dur: number) => `<g transform="translate(0 ${eyeY})"><g>${blink(dur)}<g transform="translate(0 ${-eyeY})">${pixels(rows, c, skin.eyeOy)}</g></g></g>`
   const eyes = mood === 'happy' && !isWorking
     ? pixels(EYES_HAPPY, c, skin.eyeOy)
     : mood === 'sad' && !isWorking
       ? pixels(EYES_SAD, c, skin.eyeOy)
       : isWorking
-    ? pixels(skin.eyesWork, c, skin.eyeOy)
-    : `<g>${LIVELINESS === 'quiet' ? '' : `<animateTransform attributeName="transform" type="translate" values="0 0;${-U} 0;0 0;${U} 0;0 0" keyTimes="0;0.3;0.45;0.75;0.9" dur="9s" calcMode="discrete" repeatCount="indefinite"/>`}<g><animateTransform attributeName="transform" type="scale" values="1 1;1 1;1 0.15;1 1" keyTimes="0;0.9;0.94;1" dur="4s" repeatCount="indefinite"/>${pixels(skin.eyesIdle, c, skin.eyeOy)}</g></g>`
-  const legs = moving && LIVELINESS !== 'quiet'
+        ? blinking(skin.eyesWork, 3.4)
+        : `<g>${quiet ? '' : `<animateTransform attributeName="transform" type="translate" values="0 0;${-U} 0;0 0;${U} 0;0 0" keyTimes="0;0.3;0.45;0.75;0.9" dur="9s" ${at(9)} calcMode="discrete" repeatCount="indefinite"/>`}${blinking(skin.eyesIdle, 4)}</g>`
+  const legs = moving && !quiet
     ? `<g>${steps('0 0;0 -3', '0.4s')}${pixels(skin.legsA, c)}</g><g>${steps('0 -3;0 0', '0.4s')}${pixels(skin.legsB, c)}</g>`
     : pixels(skin.legsStill, c)
-  const hop = LIVELINESS === 'quiet' ? '' : moving || mood === 'happy'
-    ? steps('0 0;0 -3', '0.4s')
-    : mood === 'sad'
-      ? steps('0 0;2 0;-2 0;0 0', '0.3s')
-      : isWorking ? '' : steps('0 0;0 -3;0 0', '2.4s', 'keyTimes="0;0.5;0.56"')
-  const spark = isWorking && moving && LIVELINESS === 'lively'
+  // the upper body: breathing at rest, a bob in step with the legs on a walk
+  const torsoMotion = quiet ? ''
+    : moving ? `<animateTransform attributeName="transform" type="translate" values="0 0;0 1.5;0 0;0 1.5;0 0" dur="0.8s" calcMode="spline" keySplines="${ease(4)}" repeatCount="indefinite"/>`
+      : mood === 'sad' ? ''
+        : `<animateTransform attributeName="transform" type="translate" values="0 0;0 1.2;0 0" dur="${isWorking ? 1.8 : 3}s" ${at(isWorking ? 1.8 : 3)} calcMode="spline" keySplines="${ease(2)}" repeatCount="indefinite"/>`
+  // walking leans into the stride
+  const lean = moving && !quiet ? ` transform="translate(${7 * U} ${10 * U}) skewX(${(-7 * dir).toFixed(0)}) translate(${-7 * U} ${-10 * U})"` : ''
+  const torso = `<g${lean}><g>${torsoMotion}${pixels(skin.body, c)}${eyes}</g></g>`
+  // a happy actor bounces with squash on landing and stretch in the air; an idle
+  // one hops now and then; a walker lands on every step
+  const bounce = (dur: number, height: number, rest: number) => {
+    // rest: the share of the cycle spent standing before the hop
+    const k = rest.toFixed(2), up = (rest + (1 - rest) * 0.45).toFixed(2), land = (rest + (1 - rest) * 0.9).toFixed(2)
+    const hop = `<animateTransform attributeName="transform" type="translate" values="0 0;0 0;0 ${-height};0 0;0 0" keyTimes="0;${k};${up};${land};1" dur="${dur}s" ${at(dur)} calcMode="spline" keySplines="${EASE};0.2 0.7 0.4 1;0.6 0 0.8 0.4;${EASE}" repeatCount="indefinite"/>`
+    const crouch = Math.max(0.01, rest - 0.08).toFixed(2), air = (rest + 0.04).toFixed(2)
+    const squash = `<animateTransform attributeName="transform" type="scale" values="1 1;1 1;1.08 0.9;0.95 1.07;1 1;1.08 0.91;1 1" keyTimes="0;${crouch};${k};${air};${up};${land};1" dur="${dur}s" ${at(dur)} calcMode="spline" keySplines="${ease(6)}" repeatCount="indefinite"/>`
+    return { hop, squash }
+  }
+  const happy = mood === 'happy' && !isWorking
+  const b = quiet || mood === 'sad' || isWorking && !moving ? null
+    : happy ? bounce(0.7, lively ? 9 : 7, 0.1)
+      : moving ? null
+        : bounce(2.4, 3, 0.7)
+  const shake = !quiet && mood === 'sad' ? steps('0 0;2 0;-2 0;0 0', '0.3s') : ''
+  const walkHop = moving && !quiet ? steps('0 0;0 -2', '0.4s') : ''
+  const spark = isWorking && moving && lively
     ? `<g transform="translate(${5 * U} ${-3 * U})" fill="#ffd23f"><rect x="${U}" y="0" width="${U}" height="${3 * U}"/><rect x="0" y="${U}" width="${3 * U}" height="${U}"/><animate attributeName="opacity" values="1;0.2;1" dur="0.6s" repeatCount="indefinite"/></g>`
     : ''
-  return `<g shape-rendering="crispEdges"><g class="actor-motion">${hop}<g transform="translate(0 ${7 * U})">${legs}</g>${pixels(skin.body, c)}${eyes}${spark}</g></g>`
+  const figure = `<g transform="translate(0 ${7 * U})">${legs}</g>${torso}${spark}`
+  return `<g shape-rendering="crispEdges"><g class="actor-motion">${b ? b.hop : shake || walkHop}${b ? feet(b.squash, figure) : figure}</g></g>`
 }
 
 // Small pixel glyphs: '#' cells of `size` units at (x, y).
@@ -625,6 +660,10 @@ const withEffects = (a: Avatar, body: string, now: number) => {
   return body
 }
 
+// Which way an actor walks: toward its meeting, or along its path.
+const walkDir = (a: Avatar, meeting: boolean) => meeting ? a.talk!.toward
+  : (a.segs[a.segs.length - 1]?.to ?? a.restX) >= (a.segs[0]?.from ?? a.restX) ? 1 : -1
+
 const agentSvg = (a: Avatar, now: number, compact = false) => {
   const arrived = a.isWorking && now - a.pathStart >= a.total * 1000
   const performance = performanceFor(a.waiting || a.permissionTokens.size ? 'wait' : a.isWorking ? a.workKind : 'rest', BEHAVIOR, a.personality, a.actionSequence)
@@ -637,7 +676,7 @@ const agentSvg = (a: Avatar, now: number, compact = false) => {
   const place = scenePlace(THEME, a.stationKind, W, a.seed, a.episode)
   const seated = arrived && !meeting && place.place?.shape === 'sofa'
   const droop = TIRED === 2 && !moving ? -U : 0
-  const body = `<g transform="translate(${-7 * U} ${GY - 10 * U - (seated ? 5 : 0) - droop})">${robotBody(SKINS[a.skin] ?? SKINS['robot']!, a.color, lifestyle ? false : a.isWorking, a.mood, moving)}</g>`
+  const body = `<g transform="translate(${-7 * U} ${GY - 10 * U - (seated ? 5 : 0) - droop})">${robotBody(SKINS[a.skin] ?? SKINS['robot']!, a.color, lifestyle ? false : a.isWorking, a.mood, moving, a.seed, walkDir(a, meeting))}</g>`
   const inner = `<title>${esc(a.name)} — ${a.personality.title}</title>${shadowSvg(moving && !seated)}
 ${arrived ? `<title>at the ${place.title}</title>` : ''}
 ${personalitySvg(a.personality, lifestyle ? lifeActorSvg(body,THEME,a.episode,a.personality,now,GY,BEHAVIOR,LIVELINESS,arrived,meeting || a.waiting || !!a.permissionTokens.size,a.cue?.kind === 'tool-error' ? 'error' : a.mood || (!a.isWorking ? 'rest' : '')) : (beat ? actionPose(body, a.choreography, a.personality, GY, now, LIVELINESS) : body) + (meeting ? '' : beat ? actionSvg(a.choreography!, a.personality, GY, a.skin === 'anime' ? '#ffd9b8' : a.color, now, BEHAVIOR, LIVELINESS, context ?? undefined) : propSvg(performance, GY, a.skin === 'anime' ? '#ffd9b8' : a.color, now, BEHAVIOR, LIVELINESS)), GY, now, BEHAVIOR, LIVELINESS)}

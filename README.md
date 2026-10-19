@@ -3,7 +3,7 @@
 A [Claude Code mod](https://code.claude.com/docs/en/plugins/mods/overview) that puts a tiny pixel-art world above the prompt. The main agent and every subagent are little pixel characters (robots, cats, dragons, anime kids):
 
 - **While agents work:** the workshop acts out their real tools. Other worlds have their own life: street parties, picnics, snowballs, swimming and naps. Personalities choose different pastimes; real events bring people together, startle them or pause their play.
-- **Idle or done:** it stands still, blinks and sleeps (`z z`).
+- **Idle or done:** it breathes, blinks, looks around and sleeps (`z z`). Every character keeps its own rhythm, so a crew never blinks or bounces in unison; walkers lean into their stride and a happy hop squashes and stretches.
 - **Enter and exit:** a new subagent pops in with a bounce; a finished one flickers, floats up and vanishes in a puff of pixels after 15 seconds.
 
 ![An agent appears, works and leaves](docs/spawn-and-leave.gif)
