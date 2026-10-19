@@ -14,6 +14,7 @@ const prefix = stripTypeScriptTypes(source.slice(0, boundary), { mode: 'strip' }
   .replaceAll("'./theater.ts'", JSON.stringify(pathToFileURL(resolve(root, 'hooks/theater.ts')).href))
   .replaceAll("'./worlds.ts'", JSON.stringify(pathToFileURL(resolve(root, 'hooks/worlds.ts')).href))
   .replaceAll("'./life.ts'", JSON.stringify(pathToFileURL(resolve(root, 'hooks/life.ts')).href))
+  .replaceAll("'./looks.ts'", JSON.stringify(pathToFileURL(resolve(root, 'hooks/looks.ts')).href))
 const fixture = `
 export function preview(width, behavior, look, filled, mixed = false, beatAge = null, duetKind = null, duetAge = 1500, quiet = false, world = 'workshop', moods = false, reactions = false) {
   W = width; H = 156; GY = 142; THEME = world; SKY = filled;
