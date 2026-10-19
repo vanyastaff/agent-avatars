@@ -135,3 +135,47 @@ for (const pace of [250, 700, 1500]) {
     await ui.unmount()
   })
 }
+
+// The default sky is transparent, so a frame laid over another hides nothing:
+// only one frame may be drawn at a time, and no drawn frame may reload.
+test('only one frame is drawn and none reloads while it is drawn', { timeoutMs: 60000 }, async ($, on) => {
+  const clock = mock.clock(on, { now: 100000 })
+  on('agent.list', () => ({ value: [] }))
+  on('config.list', () => ({ value: [] }))
+  on('turn.start', ($, e) => ({ turnId: e.turnId }))
+  on('tool.call', async () => { await clock.sleep(400); return { result: 'ok' } })
+  await $.turn.start({ turnId: 't', text: 'Work' })
+  const ui = await $.ui.mount(BAND)
+  await clock.advance(1000)
+  const tools = ['Read', 'Grep', 'Edit', 'Bash', 'Read', 'Read', 'Edit']
+  const drawn = async () => {
+    const out: Record<string, string> = {}
+    for (const key of ['scene-0', 'scene-1']) {
+      const box = await ui.find({ key })
+      if (!box || box.props.display === 'none') continue
+      const svg = box.children.find(c => (c as { type?: string }).type === 'Svg') as { props: { source: string } } | undefined
+      out[key] = String(svg?.props.source)
+    }
+    return out
+  }
+  let before = await drawn()
+  let both = 0
+  let reloads = 0
+  let swaps = 0
+  for (let t = 0, n = 0; t < 12000; t += 50) {
+    if (t % 700 === 0) void $.tool.call({ tool: tools[n++ % tools.length], file_path: '/a.rs', pattern: 'x', command: 'ls' } as never)
+    await clock.advance(50)
+    const after = await drawn()
+    const keys = Object.keys(after)
+    if (keys.length !== 1) both++
+    for (const k of keys) if (k in before && before[k] !== after[k]) reloads++
+    if (keys.join() !== Object.keys(before).join()) swaps++
+    before = after
+  }
+  console.log(`${swaps} swaps, ${both} moments with two frames drawn, ${reloads} reloads in view`)
+  expect(swaps > 3).toBe(true)
+  expect(both).toBe(0)
+  expect(reloads).toBe(0)
+  await clock.advance(2000)
+  await ui.unmount()
+})
