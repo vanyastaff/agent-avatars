@@ -61,7 +61,7 @@ type Avatar = {
   total: number
 }
 
-const VERSION = '0.13.0'
+const VERSION = '0.16.0'
 const COLORS = ['#ff8a1f', '#37c871', '#b45cff', '#2fa8ff', '#ffd23f', '#ff5c7a', '#e6e6e6']
 const LINGER_MS = 15000
 const MOOD_MS = 5000
@@ -369,6 +369,8 @@ type Skin = {
   // a habit of the species drawn over the body: it moves with the breathing
   trait?: (c: Record<string, string>, t: Trait) => string
   habit?: string
+  crown: number // the row a hat sits on: the top of the head, between any ears or horns
+  cheek: number | null // the row a blush goes on, or null when the face already has one
 }
 
 // What a skin's trait needs: how the actor feels and its own loop offset.
@@ -443,6 +445,8 @@ const SKINS: Record<string, Skin> = {
     palette: c => ({ X: c, L: shade(c, 1.25), D: shade(c, 0.72), E: EYE }),
     trait: robotTrait,
     habit: 'its antenna lamp glows',
+    crown: 0,
+    cheek: 3,
   },
   cat: {
     title: 'Cat',
@@ -464,6 +468,8 @@ const SKINS: Record<string, Skin> = {
     palette: c => ({ X: c, L: shade(c, 1.3), D: shade(c, 0.78), P: '#ff9ab0', E: EYE }),
     trait: catTrait,
     habit: 'its tail tip flicks',
+    crown: 2,
+    cheek: 4,
   },
   dragon: {
     title: 'Dragon',
@@ -485,6 +491,8 @@ const SKINS: Record<string, Skin> = {
     palette: c => ({ X: c, L: shade(c, 1.4), D: shade(c, 0.58), E: EYE }),
     trait: dragonTrait,
     habit: 'it beats its wings and puffs smoke',
+    crown: 1,
+    cheek: 3,
   },
   anime: {
     title: 'Anime',
@@ -506,6 +514,8 @@ const SKINS: Record<string, Skin> = {
     palette: c => ({ X: c, S: '#ffd9b8', P: '#ff9aa8', U: '#4a63c9', W: '#ffffff', R: '#e03a4e', E: EYE, D: shade(c, 0.7), L: shade(c, 1.2) }),
     trait: animeTrait,
     habit: 'its cowlick bounces',
+    crown: 0,
+    cheek: null,
   },
 }
 const SKIN_IDS = Object.keys(SKINS)
@@ -513,10 +523,44 @@ const SKIN_IDS = Object.keys(SKINS)
 const EYES_HAPPY = ['....E....E....', '...E.E..E.E...']
 const EYES_SAD = ['...E.E..E.E...', '....E....E....', '...E.E..E.E...']
 
+// What each personality wears, drawn on the sprite grid so it sits on every
+// species' head and moves with the body: `behind` goes under the body pixels.
+const outfit = (skin: Skin, wear: string, quiet: boolean, at: (dur: number) => string) => {
+  const c = skin.crown
+  const blush = skin.cheek === null ? '' : cell(3, skin.cheek, 1, 1, '#ff9ab0', ' opacity="0.8"') + cell(10, skin.cheek, 1, 1, '#ff9ab0', ' opacity="0.8"')
+  if (wear === 'meticulous') {
+    // a pencil tucked behind the ear
+    return { behind: '', front: cell(12, c - 2, 1, 1, '#b56257') + cell(12, c - 1, 1, 3, '#ecc877') + cell(12, c + 2, 1, 1, '#e8c9a0') + cell(12, c + 3, 1, 0.5, '#3f4145') }
+  }
+  if (wear === 'curious') {
+    // a satchel for whatever it finds, on a strap over the shoulder
+    const strap = '#6f503c'
+    return { behind: '', front: cell(2, 3, 1, 1, strap) + cell(1, 4, 1, 1, strap) + cell(-1, 5, 3, 3, '#b18b56') + cell(-1, 5, 3, 1, '#ddbc79') + cell(0, 6, 1, 0.5, '#6f503c') }
+  }
+  if (wear === 'dramatic') {
+    // a cape that hangs behind and flutters at the hem
+    const dark = '#9c4a44', red = '#ce695d'
+    const flutter = quiet ? cell(0, 6, 1, 2, dark)
+      : `<g>${flash(0.8, at(0.8), '0;0.5', '1;0')}${cell(0, 6, 1, 2, dark)}</g><g opacity="0">${flash(0.8, at(0.8), '0;0.5', '0;1')}${cell(13, 6, 1, 2, dark)}</g>`
+    return { behind: cell(1, 2, 12, 5, red) + cell(1, 7, 12, 1, dark) + flutter, front: cell(2, 5, 1, 1, '#e2bf71') + cell(11, 5, 1, 1, '#e2bf71') }
+  }
+  if (wear === 'sleepy') {
+    // a floppy nightcap with a pompom at the tip
+    const cap = '#7c91b2'
+    return { behind: '', front: cell(2, c - 1, 10, 1, '#bec6ca') + cell(3, c - 2, 8, 1, cap) + cell(2, c - 3, 6, 1, cap) + cell(0, c - 4, 4, 1, cap) + cell(-1, c - 3, 2, 2, '#e3d3a7') }
+  }
+  if (wear === 'shy') {
+    // a knitted beanie pulled down low, and a blush
+    const knit = '#78977c'
+    return { behind: '', front: cell(2, c - 1, 10, 1, '#9bb59e') + cell(3, c - 2, 8, 1, knit) + cell(4, c - 3, 6, 1, knit) + cell(6, c - 4, 2, 1, '#e9e3cf') + blush }
+  }
+  return { behind: '', front: '' }
+}
+
 // A body that breathes, blinks, leans into its walk and squashes as it lands.
 // `seed` spreads each actor's loops over their cycles, so a crew never blinks,
 // breathes or bounces in unison; `dir` is the way it walks (1 right, -1 left).
-const robotBody = (skin: Skin, color: string, isWorking: boolean, mood = '', moving = isWorking, seed = 0, dir = 1) => {
+const robotBody = (skin: Skin, color: string, isWorking: boolean, mood = '', moving = isWorking, seed = 0, dir = 1, wear = '') => {
   const c = skin.palette(color)
   const quiet = LIVELINESS === 'quiet'
   const lively = LIVELINESS === 'lively'
@@ -547,7 +591,8 @@ const robotBody = (skin: Skin, color: string, isWorking: boolean, mood = '', mov
   // walking leans into the stride
   const lean = moving && !quiet ? ` transform="translate(${7 * U} ${10 * U}) skewX(${(-7 * dir).toFixed(0)}) translate(${-7 * U} ${-10 * U})"` : ''
   const trait = skin.trait ? `<g class="trait"><title>${skin.title.toLowerCase()}: ${skin.habit}</title>${skin.trait(c, { working: isWorking, mood: isWorking ? '' : mood, quiet, at })}</g>` : ''
-  const torso = `<g${lean}><g>${torsoMotion}${pixels(skin.body, c)}${eyes}${trait}</g></g>`
+  const dress = outfit(skin, wear, quiet, at)
+  const torso = `<g${lean}><g>${torsoMotion}${dress.behind}${pixels(skin.body, c)}${eyes}${trait}${dress.front}</g></g>`
   // a happy actor bounces with squash on landing and stretch in the air; an idle
   // one hops now and then; a walker lands on every step
   const bounce = (dur: number, height: number, rest: number) => {
@@ -589,14 +634,15 @@ const QUESTION = ['.###.', '#...#', '...#.', '..#..', '.....', '..#..']
 const moodSvg = (a: Avatar) => {
   if (a.leaveAt) return ''
   const quiet = LIVELINESS === 'quiet'
-  const x = 8 * U + 2
+  // left of the head: the right hand is where held props go
+  const x = -8 * U - 12
   const head = GY - 10 * U
   if (a.permissionTokens.size || a.waiting) {
     const bob = quiet ? '' : `<animateTransform attributeName="transform" type="translate" values="0 0;0 -4;0 0" keyTimes="0;0.5;1" dur="1.3s" calcMode="spline" keySplines="${EASE};${EASE}" repeatCount="indefinite"/>`
     return `<g shape-rendering="crispEdges"><g class="actor-motion">${bob}${glyph(QUESTION, x, head + 2, 2, '#2b6fd8')}</g></g>`
   }
   if (a.isWorking && a.phase === 'thinking' && !quiet) {
-    return `<g>${[0, 1, 2].map(i => `<circle cx="${x + 2 + i * 5}" cy="${head + 14 - i * 6}" r="${1.5 + i * 0.8}" fill="#f2f2f2" stroke="#9a9a9a" stroke-width="0.8" opacity="0"><animate attributeName="opacity" values="0;0.95;0.95;0" keyTimes="0;0.15;0.75;1" dur="1.8s" begin="${(i * 0.3).toFixed(1)}s" repeatCount="indefinite"/></circle>`).join('')}</g>`
+    return `<g>${[0, 1, 2].map(i => `<circle cx="${x + 12 - i * 5}" cy="${head + 14 - i * 6}" r="${1.5 + i * 0.8}" fill="#f2f2f2" stroke="#9a9a9a" stroke-width="0.8" opacity="0"><animate attributeName="opacity" values="0;0.95;0.95;0" keyTimes="0;0.15;0.75;1" dur="1.8s" begin="${(i * 0.3).toFixed(1)}s" repeatCount="indefinite"/></circle>`).join('')}</g>`
   }
   if (a.isWorking) return ''
   if (a.mood === 'happy' && !quiet) {
@@ -672,7 +718,7 @@ const tagSvg = (a: Avatar, compact = false) => {
   const limit = compact ? 6 : 18
   const name = a.name.length > limit ? a.name.slice(0, limit - 1) + '…' : a.name
   const w = name.length * 5.6 + 10
-  const top = GY - 10 * U - 20
+  const top = GY - 10 * U - 26 // clear of a hat on the head
   let s = `<g shape-rendering="crispEdges"><rect x="${-w / 2}" y="${top}" width="${w}" height="12" fill="#000" opacity="0.75"/><rect x="${-w / 2}" y="${top}" width="${w}" height="2" fill="${a.color}"/></g>
 <text x="0" y="${top + 10}" text-anchor="middle" font-family="${MONO}" font-weight="bold" font-size="9" fill="#fff">${esc(name)}</text>`
   const bubble = (label: string, stroke: string) => {
@@ -688,9 +734,10 @@ const tagSvg = (a: Avatar, compact = false) => {
   } else if (moodLabel(a)) {
     s += bubble(moodLabel(a), a.waiting ? '#2b6fd8' : (MOOD_STROKE[a.mood] ?? '#222'))
   } else {
-    const zy = GY - 10 * U - 4
-    s += `<text x="${8 * U}" y="${zy}" font-family="${MONO}" font-weight="bold" font-size="10" fill="#999">z<animate attributeName="y" values="${zy};${zy - 12}" dur="2.4s" repeatCount="indefinite"/><animate attributeName="opacity" values="0.9;0" dur="2.4s" repeatCount="indefinite"/></text>
-<text x="${9 * U + 8}" y="${zy - 6}" font-family="${MONO}" font-weight="bold" font-size="8" fill="#999">z<animate attributeName="y" values="${zy - 6};${zy - 18}" dur="2.4s" begin="0.8s" repeatCount="indefinite"/><animate attributeName="opacity" values="0.9;0" dur="2.4s" begin="0.8s" repeatCount="indefinite"/></text>`
+    // the z's drift up and away from the head, clear of the name tag above it
+    const zy = GY - 10 * U + 2
+    const z = (x: number, y: number, size: number, begin: string) => `<text x="${x}" y="${y}" font-family="${MONO}" font-weight="bold" font-size="${size}" fill="#999" opacity="0">z<animate attributeName="x" values="${x};${x + 8}" dur="2.4s"${begin} repeatCount="indefinite"/><animate attributeName="y" values="${y};${y - 9}" dur="2.4s"${begin} repeatCount="indefinite"/><animate attributeName="opacity" values="0;0.9;0" keyTimes="0;0.2;1" dur="2.4s"${begin} repeatCount="indefinite"/></text>`
+    s += z(8 * U, zy, 10, '') + '\n' + z(9 * U + 9, zy - 5, 8, ' begin="0.8s"')
   }
   return s
 }
@@ -733,7 +780,7 @@ const agentSvg = (a: Avatar, now: number, compact = false) => {
   const place = scenePlace(THEME, a.stationKind, W, a.seed, a.episode)
   const seated = arrived && !meeting && place.place?.shape === 'sofa'
   const droop = TIRED === 2 && !moving ? -U : 0
-  const body = `<g transform="translate(${-7 * U} ${GY - 10 * U - (seated ? 5 : 0) - droop})">${robotBody(SKINS[a.skin] ?? SKINS['robot']!, a.color, lifestyle ? false : a.isWorking, a.mood, moving, a.seed, walkDir(a, meeting))}</g>`
+  const body = `<g transform="translate(${-7 * U} ${GY - 10 * U - (seated ? 5 : 0) - droop})">${robotBody(SKINS[a.skin] ?? SKINS['robot']!, a.color, lifestyle ? false : a.isWorking, a.mood, moving, a.seed, walkDir(a, meeting), a.personality.id)}</g>`
   const inner = `<title>${esc(a.name)} — ${a.personality.title}</title>${shadowSvg(moving && !seated)}
 ${arrived ? `<title>at the ${place.title}</title>` : ''}
 ${personalitySvg(a.personality, lifestyle ? lifeActorSvg(body,THEME,a.episode,a.personality,now,GY,BEHAVIOR,LIVELINESS,arrived,meeting || a.waiting || !!a.permissionTokens.size,a.cue?.kind === 'tool-error' ? 'error' : a.mood || (!a.isWorking ? 'rest' : '')) : (beat ? actionPose(body, a.choreography, a.personality, GY, now, LIVELINESS) : body) + (meeting ? '' : beat ? actionSvg(a.choreography!, a.personality, GY, a.skin === 'anime' ? '#ffd9b8' : a.color, now, BEHAVIOR, LIVELINESS, context ?? undefined) : propSvg(performance, GY, a.skin === 'anime' ? '#ffd9b8' : a.color, now, BEHAVIOR, LIVELINESS)), GY, now, BEHAVIOR, LIVELINESS)}

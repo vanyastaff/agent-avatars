@@ -56,9 +56,9 @@ export const duetSvg = (kind: DuetKind, role: 'send' | 'recv', p: Personality, a
   const holds = kind !== 'message' || role === 'send' && beat.stage <= 1 || role === 'recv' && beat.stage >= 2 || role === 'recv' && beat.stage === 1 && p.id === 'curious'
   const object = holds ? propSvg({ kind: 'dispatch', prop, description: beat.gesture }, ground, '#c7b98e', now, mode, liveliness) : ''
   const hand = active ? `<path d="M0 ${ground - 18}h${toward * 23}" stroke="#c7b98e" stroke-width="5"/>` : ''
-  const mark = active && beat.stage === 2 ? p.id === 'dramatic' ? `<path d="M0 ${ground - 68}l3 7 7 3-7 3-3 7-3-7-7-3 7-3z" fill="#e2bf71"/>`
-    : p.id === 'sleepy' ? `<path d="M-4 ${ground - 59}h8l-8 8h8" fill="none" stroke="#b8c7d0" stroke-width="2"/>`
-    : `<path d="M-4 ${ground - 56}l3 3 6-7" fill="none" stroke="#a5bea4" stroke-width="2"/>` : ''
+  const mark = active && beat.stage === 2 ? p.id === 'dramatic' ? `<path d="M0 ${ground - 74}l3 7 7 3-7 3-3 7-3-7-7-3 7-3z" fill="#e2bf71"/>`
+    : p.id === 'sleepy' ? `<path d="M-4 ${ground - 65}h8l-8 8h8" fill="none" stroke="#b8c7d0" stroke-width="2"/>`
+    : `<path d="M-4 ${ground - 62}l3 3 6-7" fill="none" stroke="#a5bea4" stroke-width="2"/>` : ''
   const extension = active ? toward * 9 : 0
   const lift = !active ? 0 : p.id === 'dramatic' && beat.stage === 2 ? -24 : p.id === 'shy' ? 7 : p.id === 'sleepy' ? 4 : p.id === 'curious' ? -8 : 0
   const tilt = !active ? 0 : p.id === 'dramatic' ? toward * -8 : p.id === 'sleepy' ? toward * 12 : p.id === 'shy' ? toward * -4 : toward * 3
@@ -168,9 +168,9 @@ export const flourishSvg = (p: Personality, ground: number, started: number | nu
   } else {
     art += `<path d="M-23 ${ground - 3}v-15m0 8q-13-11-8-14 11-1 8 14m0-4q9-12 14-7 0 9-14 7" stroke="#91b387" stroke-width="2" fill="#91b387"/>`
   }
-  const mark = mode === 'cozy' ? `<path d="M-3 ${ground - 51}q-6-7-9-1-2 5 9 11 11-6 9-11-3-6-9 1" fill="#c9867c"/>`
+  const mark = mode === 'cozy' ? `<path d="M-3 ${ground - 59}q-6-7-9-1-2 5 9 11 11-6 9-11-3-6-9 1" fill="#c9867c"/>`
     : mode === 'chaotic' ? r(-34, ground - 32, 5, 5, '#d0b478') + r(32, ground - 50, 4, 4, '#a1bfbc')
-    : `<path d="M0 ${ground - 58}l3 7 7 3-7 3-3 7-3-7-7-3 7-3z" fill="#c6c698"/>`
+    : `<path d="M0 ${ground - 66}l3 7 7 3-7 3-3 7-3-7-7-3 7-3z" fill="#c6c698"/>`
   const motion = liveliness === 'quiet' ? '' : `<animate attributeName="opacity" values="0;1;1;0" keyTimes="0;.12;.8;1" ${timing}/>`
   return `<g><title>Personality moment: ${p.habit}</title>${motion}${art}${mark}</g>`
 }
@@ -235,18 +235,12 @@ export const propSvg = (p: Performance, ground: number, hand: string, now: numbe
   return `<g transform="translate(15 ${ground - 23})"><title>${p.description}</title><g class="actor-motion">${animated && liveliness !== 'quiet' ? `<animateTransform attributeName="transform" type="rotate" values="-${angle} 0 20;${angle} 0 20;-${angle} 0 20" dur="${dur}s" begin="-${phase}s" repeatCount="indefinite"/>` : ''}${art}${r(-4, 12, 7, 5, hand)}</g></g>`
 }
 
+// The personality's sway; what it wears is drawn with the body (register.tsx).
 export const personalitySvg = (p: Personality, body: string, ground: number, now: number, behavior: Behavior, liveliness: Liveliness) => {
-  const y = ground - 30
-  let accessory = ''
-  if (p.id === 'meticulous') accessory = r(17, y + 4, 3, 17, '#ecc877') + r(17, y + 2, 3, 3, '#b56257') + r(17, y + 20, 3, 2, '#3f4145')
-  if (p.id === 'curious') accessory = `<path d="M-14 ${y + 7}l19 19" stroke="#6f503c" stroke-width="3"/>` + r(-24, y + 17, 10, 12, '#b18b56') + r(-23, y + 18, 8, 3, '#ddbc79')
-  if (p.id === 'dramatic') accessory = r(-19, y + 16, 38, 4, '#ce695d') + `<path d="M17 ${y + 16}l18 4-5 5-13-5z" fill="#ce695d"/>`
-  if (p.id === 'sleepy') accessory = `<path d="M-15 ${y + 1}l8-12 17 9 4 7z" fill="#7c91b2"/>` + r(-15, y - 1, 30, 4, '#bec6ca') + r(9, y - 5, 6, 6, '#e3d3a7')
-  if (p.id === 'shy') accessory = `<path d="M-20 ${y + 3}l6-9h28l6 9v13h-4V${y + 3}h-32v13h-4z" fill="#78977c"/>` + r(-20, y + 17, 40, 4, '#78977c')
   const intensity = { quiet: 0.2, normal: 1, lively: 1.4 }[liveliness] * { cozy: 0.6, chaotic: 1.5, adventure: 0.9 }[behavior]
   const lean = (p.lean * intensity).toFixed(1)
   const phase = ((now / 1000) % p.period).toFixed(2)
-  return `<g><title>${p.title}: ${p.habit}</title><g class="actor-motion"><animateTransform attributeName="transform" type="rotate" values="0 0 ${ground};${lean} 0 ${ground};0 0 ${ground};-${lean} 0 ${ground};0 0 ${ground}" dur="${p.period}s" begin="-${phase}s" repeatCount="indefinite"/>${body}${accessory}</g></g>`
+  return `<g><title>${p.title}: ${p.habit}</title><g class="actor-motion"><animateTransform attributeName="transform" type="rotate" values="0 0 ${ground};${lean} 0 ${ground};0 0 ${ground};-${lean} 0 ${ground};0 0 ${ground}" dur="${p.period}s" begin="-${phase}s" repeatCount="indefinite"/>${body}</g></g>`
 }
 
 export const workshopStations = (width: number) => [0.13, 0.36, 0.59, 0.82].map(f => Math.round(width * f))

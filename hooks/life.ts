@@ -113,7 +113,7 @@ const path = (d: string,c: string,w = 2) => `<path d="${d}" fill="none" stroke="
 const flame = `<path d="M-15-38l5-17 6 8 6-24 13 33z" fill="#dc8e53"/><path d="M-6-38l5-13 6 13z" fill="#ebc37b"/>`
 const cup = r(10,-21,13,11,'#d4bc98') + path('M23-19h5v7h-5','#d4bc98',3)
 const skewer = path('M3-18l35-8','#cab58c',3) + r(10,-25,7,7,'#b97d55') + r(21,-28,7,7,'#c1a16d') + r(31,-31,6,7,'#b97d55')
-const note = path('M20-58v-17h9v5h-6v12m-3-1q-10-5-10 2t10-2', '#d0bf83',3)
+const note = path('M20-64v-17h9v5h-6v12m-3-1q-10-5-10 2t10-2', '#d0bf83',3)
 const motion = (type: string,values: string,period: number,now: number,quiet: boolean) => quiet ? '' : `<animateTransform attributeName="transform" type="${type}" values="${values}" dur="${period}s" begin="-${((now / 1000) % period).toFixed(2)}s" repeatCount="indefinite"/>`
 
 export const lifeActorSvg = (body: string, scene: string, episode: Episode, p: Personality, now: number, ground: number, mode: Behavior, liveliness: Liveliness, arrived: boolean, paused: boolean, reaction: string) => {
@@ -133,7 +133,7 @@ export const lifeActorSvg = (body: string, scene: string, episode: Episode, p: P
     if (beat.style === 'lounge') hands = cup + (p.id === 'sleepy' ? path('M-8-51h9l-9 8h9','#b8c5c7') : '')
     if (beat.style === 'swim') hands = path('M-14-22l-16 4m44-4 16-6','#b6d3c3',4)
     if (beat.style === 'bubbles') hands = `<circle cx="18" cy="-34" r="8" fill="none" stroke="#b5dcd2"/><circle cx="28" cy="-52" r="4" fill="none" stroke="#b5dcd2"/>`
-    if (beat.style === 'crown') hands = `<path d="M-13-54l-3-13 10 6 6-12 6 12 10-6-3 13z" fill="#d2bc76"/>`
+    if (beat.style === 'crown') hands = `<path d="M-13-31l-3-13 10 6 6-12 6 12 10-6-3 13z" fill="#d2bc76"/>`
     if (beat.style === 'tea') hands = cup
     if (beat.style === 'snack') hands = path('M8-19l12-2','#d4b98e',4) + r(16,-29,13,10,'#d0a777') + r(18,-28,3,3,'#a27562')
     if (beat.style === 'play') hands = `<g class="actor-motion">${motion('translate',beat.stage === 3 ? '0 0;0 0' : '0 -6;4 0;0 -6',p.period,now,quiet)}<circle cx="20" cy="-25" r="8" fill="${scene==='snow'?'#dce6e0':'#bb9ab2'}"/>${path('M10-18l7-5','#d4b98e',4)}</g>`
@@ -150,7 +150,7 @@ export const lifeActorSvg = (body: string, scene: string, episode: Episode, p: P
       : beat.style === 'play' ? `<circle cx="25" cy="-7" r="7" fill="#b6a6b5"/>`
       : path('M14-21l11-15m-2-4 3 4 5-4','#d4b98e',3)
   }
-  const pose = arrived && !paused ? beat.style === 'nap' ? `rotate(-48 0 ${ground-14})`
+  const pose = arrived && !paused ? beat.style === 'nap' ? `rotate(-8 0 ${ground})`
     : beat.style === 'lounge' ? `rotate(-10 0 ${ground})` : beat.style === 'swing' ? 'translate(0 -12)'
     : scene==='ocean' && beat.style==='swim' ? `rotate(14 0 ${ground-18})` : '' : ''
   return `<g><title>Life: ${paused ? `waiting quietly at the ${LIFE[scene]![episode.slot]!.title}` : beat.label}; ${p.title} ${p.habit}</title><g transform="${pose}"><g class="actor-motion">${anim}${body}</g><g transform="translate(0 ${ground})">${hands}${extra}</g></g></g>`
@@ -171,7 +171,13 @@ export const lifeObjectsSvg = (scene: string, width: number, ground: number, now
   if (p.shape === 'treasure') s = r(-28,-23,56,23,'#a48a69') + r(-30,-31,60,7,'#bfa27b') + r(-20,-21,4,21,'#c6b583') + r(17,-21,4,21,'#c6b583') + path('M-14-32l-3-12 10 5 7-12 7 12 10-5-3 12z','#d3c17f',4)
   if (['picnic','candy'].includes(p.shape)) s = `<path d="M-36-12h66l10 12h-78z" fill="#ac828b"/>` + path('M-24-11l5 11m13-11 3 11m12-11 1 11m-41-5h63','#d0b4a1',3) + r(-18,-24,24,13,'#bb9e76') + path('M-14-24v-8H2v8','#c9b08c',3) + cup + (p.shape==='candy'?path('M-21-35l8 5-8 5m22-10-8 5 8 5','#bba6cc',5):'')
   if (p.shape === 'flowers') s = [-26,-10,9,27].map((x,i)=>path(`M${x} 0v-${15+i%2*10}`,'#899f75',3)+`<circle cx="${x}" cy="${-18-i%2*10}" r="7" fill="${i%2?'#c4a3bd':'#d5bd84'}"/>`).join('') + `<g class="actor-motion">${motion('translate','-15 -4;14 -12;-15 -4',4.6,now,liveliness==='quiet')}<path d="M0-42q-13-14-13-3 0 8 13 3 13 5 13-3 0-11-13 3" fill="#d6bf8c"/></g>`
-  if (['swing','hammock'].includes(p.shape)) s = path('M-37 0v-65m74 65v-65','#a7967f',5) + (p.shape==='swing'?path('M-37-63h74m-53 0v46m32-46v46M-22-17h44','#bdba9b',4):`<path d="M-37-51q37 50 74 0l-8 27q-29 23-58 0z" fill="${scene==='space'?'#899ab4':'#b7a0a0'}"/>`)
+  if (['swing','hammock'].includes(p.shape)) {
+    // wide enough for the two friends who share it, one on each seat
+    const o = width < 620 ? 23 : 30
+    s = path('M-54 0v-65m108 65v-65','#a7967f',5) + (p.shape==='swing'
+      ? path(`M-54-63h108${[-o,o].map(x=>`M${x-12}-63v51m24-51v51M${x-14}-12h28`).join('')}`,'#bdba9b',4)
+      : `<path d="M-37-51q37 50 74 0l-8 27q-29 23-58 0z" transform="scale(1.46 1)" fill="${scene==='space'?'#899ab4':'#b7a0a0'}"/>`)
+  }
   if (p.shape === 'sofa') s = r(-36,-27,72,24,'#9891a7') + r(-40,-21,9,21,'#79758e') + r(31,-21,9,21,'#79758e') + r(-29,-20,24,13,'#c2afa9') + r(5,-20,24,13,'#a8b8ac')
   if (p.shape === 'toys') s = r(-29,-20,58,20,'#a88d6b') + path('M-31-28h62','#c8b289',6) + r(-22,-36,13,13,'#b48b9b') + `<circle cx="16" cy="-29" r="10" fill="#a8b3c3"/>` + path('M-5-18l8-15 8 15z','#d0be83',4)
   if (['fort','tent'].includes(p.shape)) s = `<path d="M-40 0L0-59 40 0z" fill="${p.shape==='fort'?'#ab9cb4':'#c5ad86'}"/><path d="M-15 0L0-37 15 0z" fill="#5d6877"/>` + r(-29,-7,20,7,'#b9b3a4') + r(15,-11,19,11,'#b5a2a5')
