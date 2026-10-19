@@ -50,3 +50,42 @@ test('quiet liveliness keeps the body still', { options: { liveliness: 'quiet' }
   expect(svg.includes('1.08 0.9')).toBe(false)
   await ui.unmount()
 })
+
+const WORLDS = ['workshop', 'meadow', 'home', 'lava', 'sakura', 'snow', 'night', 'desert', 'space', 'office', 'beach', 'city', 'ocean', 'halloween']
+
+// Every world has its own rare guest, drawn as a long loop inside the markup.
+for (const scene of WORLDS) {
+  test(`${scene} has a visitor of its own`, { options: { scene } }, async ($, on) => {
+    mock.clock(on, { now: 100000 })
+    on('agent.list', () => ({ value: [] }))
+    on('config.list', () => ({ value: [] }))
+    const ui = await $.ui.mount(BAND)
+    const svg = String((await liveSvg(ui))?.props.source)
+    const title = /<g class="visitor"[^>]*><title>([^<]+)<\/title>/.exec(svg)?.[1]
+    expect(typeof title).toBe('string')
+    await ui.unmount()
+  })
+}
+
+test('quiet liveliness sends no visitors', { options: { scene: 'meadow', liveliness: 'quiet' } }, async ($, on) => {
+  mock.clock(on, { now: 100000 })
+  on('agent.list', () => ({ value: [] }))
+  on('config.list', () => ({ value: [] }))
+  const ui = await $.ui.mount(BAND)
+  expect(String((await liveSvg(ui))?.props.source).includes('class="visitor"')).toBe(false)
+  await ui.unmount()
+})
+
+// Each species has a habit of its own: an antenna lamp, a flicking tail tip,
+// wing beats and smoke, a springy cowlick.
+for (const [skin, habit] of [['robot', 'antenna lamp'], ['cat', 'tail tip'], ['dragon', 'wings'], ['anime', 'cowlick']] as const) {
+  test(`a ${skin} shows its own habit`, { options: { skin, scene: 'workshop' } }, async ($, on) => {
+    mock.clock(on, { now: 100000 })
+    on('agent.list', () => ({ value: [] }))
+    on('config.list', () => ({ value: [] }))
+    const ui = await $.ui.mount(BAND)
+    const svg = String((await liveSvg(ui))?.props.source)
+    expect(new RegExp(`<g class="trait"><title>${skin}: [^<]*${habit}`).test(svg)).toBe(true)
+    await ui.unmount()
+  })
+}

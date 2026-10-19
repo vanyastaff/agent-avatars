@@ -366,6 +366,54 @@ type Skin = {
   legsA: string[]
   legsB: string[]
   palette: (color: string) => Record<string, string>
+  // a habit of the species drawn over the body: it moves with the breathing
+  trait?: (c: Record<string, string>, t: Trait) => string
+  habit?: string
+}
+
+// What a skin's trait needs: how the actor feels and its own loop offset.
+type Trait = { working: boolean; mood: string; quiet: boolean; at: (dur: number) => string }
+
+// A rect on the sprite grid; columns and rows may be fractional or negative.
+const cell = (x: number, y: number, w: number, h: number, fill: string, extra = '') =>
+  `<rect x="${x * U}" y="${y * U}" width="${w * U}" height="${h * U}" fill="${fill}"${extra}/>`
+// Shown for the share `on` of every `dur`, as a blink or a flick.
+const flash = (dur: number, at: string, keyTimes: string, values: string) =>
+  `<animate attributeName="opacity" values="${values}" keyTimes="${keyTimes}" dur="${dur}s" ${at} calcMode="discrete" repeatCount="indefinite"/>`
+
+// A robot's antenna lamp: amber at rest, green at work, pink when happy, red when sad.
+const robotTrait = (c: Record<string, string>, t: Trait) => {
+  const lamp = t.mood === 'happy' ? '#ff8fd0' : t.mood === 'sad' ? '#ff5a5a' : t.working ? '#7dffa0' : '#ffb43a'
+  const dur = t.working ? 0.9 : t.mood === 'sad' ? 0.5 : 2.6
+  const glow = t.quiet ? '' : `<animate attributeName="opacity" values="1;0.35;1" dur="${dur}s" ${t.at(dur)} repeatCount="indefinite"/>`
+  return cell(6.5, -2, 1, 2, c['D']!) + `<g>${glow}${cell(6, -3, 2, 1, lamp)}</g>`
+}
+
+// A cat's tail tip flicks from side to side, quicker while it works.
+const catTrait = (c: Record<string, string>, t: Trait) => {
+  if (t.quiet) return cell(13, 2, 1, 1, c['X']!)
+  const dur = t.working ? 1.2 : t.mood === 'sad' ? 3.6 : 2.2
+  return `<g>${flash(dur, t.at(dur), '0;0.5', '1;0')}${cell(13, 2, 1, 1, c['X']!)}</g><g opacity="0">${flash(dur, t.at(dur), '0;0.5', '0;1')}${cell(12, 1.5, 1, 1, c['X']!)}${cell(13, 2.5, 1, 0.5, c['X']!)}</g>`
+}
+
+// A dragon beats its little wings now and then and puffs smoke, or sparks when happy.
+const dragonTrait = (c: Record<string, string>, t: Trait) => {
+  if (t.quiet) return ''
+  const flap = 3.2
+  const wings = `<g opacity="0">${flash(flap, t.at(flap), '0;0.78;0.84;0.9;0.96', '0;1;0;1;0')}${cell(0, 2.5, 2, 1.5, c['D']!)}${cell(12, 2.5, 2, 1.5, c['D']!)}</g>`
+  const puffDur = t.working ? 4.5 : 7
+  const color = t.mood === 'happy' ? '#ffb347' : t.mood === 'sad' ? '#6c6c6c' : '#cfcfcf'
+  const puff = [0, 1].map(i => `<rect x="${(5.5 + i * 2) * U}" y="${-U}" width="${U}" height="${U}" fill="${color}" opacity="0"><animate attributeName="opacity" values="0;0;0.8;0" keyTimes="0;0.8;0.86;1" dur="${puffDur}s" ${t.at(puffDur)} repeatCount="indefinite"/><animateTransform attributeName="transform" type="translate" values="0 0;0 0;${i ? 3 : -3} -12" keyTimes="0;0.8;1" dur="${puffDur}s" ${t.at(puffDur)} repeatCount="indefinite"/></rect>`).join('')
+  return wings + puff
+}
+
+// An anime character's cowlick springs about; a happy one sparkles.
+const animeTrait = (c: Record<string, string>, t: Trait) => {
+  const dur = t.working ? 1.4 : 2.4
+  const sway = t.quiet ? '' : `<animateTransform attributeName="transform" type="translate" values="0 0;${U} 0;0 0;${-U} 0;0 0" dur="${dur}s" ${t.at(dur)} calcMode="spline" keySplines="${EASE};${EASE};${EASE};${EASE}" repeatCount="indefinite"/>`
+  const sparkle = t.mood === 'happy' && !t.quiet
+    ? `<g fill="#fff6a8" opacity="0">${flash(1.1, t.at(1.1), '0;0.5', '1;0')}${cell(12.5, -1, 1, 1, '#fff6a8')}${cell(13.5, -2, 0.5, 0.5, '#fff6a8')}</g>` : ''
+  return `<g>${sway}${cell(7, -1, 1, 1, c['X']!)}${cell(8, -2, 1, 1, c['X']!)}</g>${sparkle}`
 }
 
 // Four-legged shapes shared by the robot, the cat and the dragon.
@@ -393,6 +441,8 @@ const SKINS: Record<string, Skin> = {
     legsA: LEGS_A,
     legsB: LEGS_B,
     palette: c => ({ X: c, L: shade(c, 1.25), D: shade(c, 0.72), E: EYE }),
+    trait: robotTrait,
+    habit: 'its antenna lamp glows',
   },
   cat: {
     title: 'Cat',
@@ -412,6 +462,8 @@ const SKINS: Record<string, Skin> = {
     legsA: LEGS_A,
     legsB: LEGS_B,
     palette: c => ({ X: c, L: shade(c, 1.3), D: shade(c, 0.78), P: '#ff9ab0', E: EYE }),
+    trait: catTrait,
+    habit: 'its tail tip flicks',
   },
   dragon: {
     title: 'Dragon',
@@ -431,6 +483,8 @@ const SKINS: Record<string, Skin> = {
     legsA: LEGS_A,
     legsB: LEGS_B,
     palette: c => ({ X: c, L: shade(c, 1.4), D: shade(c, 0.58), E: EYE }),
+    trait: dragonTrait,
+    habit: 'it beats its wings and puffs smoke',
   },
   anime: {
     title: 'Anime',
@@ -450,6 +504,8 @@ const SKINS: Record<string, Skin> = {
     legsA: ['...UU.........', '...SS.........', '...SS.........'],
     legsB: ['.........UU...', '.........SS...', '.........SS...'],
     palette: c => ({ X: c, S: '#ffd9b8', P: '#ff9aa8', U: '#4a63c9', W: '#ffffff', R: '#e03a4e', E: EYE, D: shade(c, 0.7), L: shade(c, 1.2) }),
+    trait: animeTrait,
+    habit: 'its cowlick bounces',
   },
 }
 const SKIN_IDS = Object.keys(SKINS)
@@ -490,7 +546,8 @@ const robotBody = (skin: Skin, color: string, isWorking: boolean, mood = '', mov
         : `<animateTransform attributeName="transform" type="translate" values="0 0;0 1.2;0 0" dur="${isWorking ? 1.8 : 3}s" ${at(isWorking ? 1.8 : 3)} calcMode="spline" keySplines="${ease(2)}" repeatCount="indefinite"/>`
   // walking leans into the stride
   const lean = moving && !quiet ? ` transform="translate(${7 * U} ${10 * U}) skewX(${(-7 * dir).toFixed(0)}) translate(${-7 * U} ${-10 * U})"` : ''
-  const torso = `<g${lean}><g>${torsoMotion}${pixels(skin.body, c)}${eyes}</g></g>`
+  const trait = skin.trait ? `<g class="trait"><title>${skin.title.toLowerCase()}: ${skin.habit}</title>${skin.trait(c, { working: isWorking, mood: isWorking ? '' : mood, quiet, at })}</g>` : ''
+  const torso = `<g${lean}><g>${torsoMotion}${pixels(skin.body, c)}${eyes}${trait}</g></g>`
   // a happy actor bounces with squash on landing and stretch in the air; an idle
   // one hops now and then; a walker lands on every step
   const bounce = (dur: number, height: number, rest: number) => {
@@ -1127,6 +1184,78 @@ const ambient = () => {
   return s ? `<g shape-rendering="crispEdges">${s}</g>` : ''
 }
 
+// ---- Rare visitors -----------------------------------------------------------
+// Every world has a guest that wanders through now and then: a rabbit in the
+// meadow, a penguin sliding over the snow, a UFO in space. Each crossing is one
+// long loop that is visible for a few seconds of its cycle, so the markup never
+// changes and the frame never reloads for it.
+type Visitor = { title: string; frames: [string[], string[]]; colors: Record<string, string>; size: number; y: 'ground' | 'sky' | 'deep'; cross: number; every: number; bob?: number; roll?: boolean; opacity?: number }
+const VISITORS: Record<string, Visitor> = {
+  workshop: { title: 'a little helper drone buzzing past', size: 3, y: 'sky', cross: 9, every: 70, bob: 3,
+    frames: [['GG..GG', '.KKKK.', '.KYYK.', '..KK..'], ['.GGGG.', '.KKKK.', '.KYYK.', '..KK..']], colors: { G: '#9fb3c8', K: '#4b5563', Y: '#7dffa0' } },
+  meadow: { title: 'a rabbit hopping through the grass', size: 3, y: 'ground', cross: 10, every: 60, bob: 7,
+    frames: [['...W.W.', '...W.W.', '...WWWW', 'WWWWWKW', 'WWWWWWW', '.W...W.'], ['...W.W.', '...W.W.', '...WWWW', 'WWWWWKW', 'WWWWWWW', 'W.....W']], colors: { W: '#f2ece0', K: '#2b2b2b' } },
+  home: { title: 'a mouse scurrying along the floor', size: 3, y: 'ground', cross: 5, every: 55,
+    frames: [['....GG..', '..GGGGG.', 'PGGGGGKG', '...G..G.'], ['....GG..', '..GGGGG.', 'PGGGGGKG', '..G....G']], colors: { G: '#a7a7b0', K: '#2b2b2b', P: '#ff9ab0' } },
+  lava: { title: 'an ember bird gliding over the lava', size: 3, y: 'sky', cross: 8, every: 65, bob: 6,
+    frames: [['O...O...', 'OO.OO...', '.OOOOOY.', '..OOO...'], ['........', '.OOOOOY.', 'OOOOO...', 'O...O...']], colors: { O: '#ff7a2f', Y: '#ffd23f' } },
+  sakura: { title: 'a crane flying over the blossoms', size: 3, y: 'sky', cross: 12, every: 75, bob: 4,
+    frames: [['W.....W...', 'WW...WW...', '.WWWWWWWRK', '...WWW....'], ['..........', '.WWWWWWWRK', 'WWWWWWW...', 'W.....W...']], colors: { W: '#ffffff', R: '#e03a4e', K: '#2b2b2b' } },
+  snow: { title: 'a penguin sliding on its belly', size: 3, y: 'ground', cross: 7, every: 60,
+    frames: [['....KKK.', 'KKKKWKWO', 'KWWWWWWK', '.KKKKKK.'], ['....KKK.', 'KKKKWKWO', 'KWWWWWWK', 'KKKKKKK.']], colors: { K: '#262b36', W: '#f4f4f4', O: '#ffa53a' } },
+  night: { title: 'an owl flying across the moonlight', size: 3, y: 'sky', cross: 10, every: 70, bob: 5,
+    frames: [['B......B', 'BB.BB.BB', '.BYBBYB.', '..BBBB..'], ['........', 'BBBBBBBB', 'BBYBBYBB', '..BBBB..']], colors: { B: '#8a6d55', Y: '#ffd23f' } },
+  desert: { title: 'a tumbleweed rolling over the dunes', size: 3, y: 'ground', cross: 8, every: 55, roll: true,
+    frames: [['.TTTT.', 'T.TT.T', 'TT..TT', 'TT..TT', 'T.TT.T', '.TTTT.'], ['.TTTT.', 'T.TT.T', 'TT..TT', 'TT..TT', 'T.TT.T', '.TTTT.']], colors: { T: '#b0874f' } },
+  space: { title: 'a UFO zipping past', size: 3, y: 'sky', cross: 7, every: 80, bob: 4,
+    frames: [['...CCC...', '..CCCCC..', 'GGGGGGGGG', '.YGYGYGY.'], ['...CCC...', '..CCCCC..', 'GGGGGGGGG', '.GYGYGYG.']], colors: { C: '#9fe8ff', G: '#8f9bb0', Y: '#ffd23f' } },
+  office: { title: 'a robot vacuum gliding across the carpet', size: 3, y: 'ground', cross: 12, every: 65,
+    frames: [['.KKKKK.', 'KKKGKKK', 'KKKKKKK'], ['.KKKKK.', 'KKKKKKK', 'KKKKKKK']], colors: { K: '#3d4450', G: '#7dffa0' } },
+  beach: { title: 'a crab scuttling sideways', size: 3, y: 'ground', cross: 9, every: 55,
+    frames: [['R.....R', 'RR.K.RR', '.RRRRR.', 'R.R.R.R'], ['R.....R', 'RR.K.RR', '.RRRRR.', '.R.R.R.']], colors: { R: '#e8553a', K: '#2b2b2b' } },
+  city: { title: 'a stray cat strolling down the street', size: 3, y: 'ground', cross: 11, every: 60,
+    frames: [['G........G.G', '.G.......GGG', '..GGGGGGGKGK', '..GGGGGGGGG.', '..G.G...G.G.'], ['G........G.G', '.G.......GGG', '..GGGGGGGKGK', '..GGGGGGGGG.', '...G.G.G.G..']], colors: { G: '#7b7f87', K: '#ffd23f' } },
+  ocean: { title: 'a whale drifting by in the deep', size: 5, y: 'deep', cross: 22, every: 90, opacity: 0.35, bob: 3,
+    frames: [['B.....BBBBBB....', 'BB..BBBBBBBBBB..', '.BBBBBBBBBBBBKB.', '..BBBBBBBBBBBBBB', '.....BLLLLLLLLL.'], ['......BBBBBB....', 'B...BBBBBBBBBB..', 'BBBBBBBBBBBBBKB.', '..BBBBBBBBBBBBBB', '.....BLLLLLLLLL.']], colors: { B: '#3a6f9e', K: '#10233a', L: '#9cc3e0' } },
+  halloween: { title: 'a bat fluttering past', size: 3, y: 'sky', cross: 7, every: 50, bob: 8,
+    frames: [['B.......B', 'BB.B.B.BB', 'BBBBBBBBB', '...BRB...'], ['.........', '...B.B...', 'BBBBBBBBB', 'B..BRB..B']], colors: { B: '#2a2233', R: '#ff5a5a' } },
+}
+
+const spriteRects = (rows: string[], colors: Record<string, string>, size: number) => {
+  let out = ''
+  rows.forEach((row, y) => {
+    for (let x = 0; x < row.length; x++) {
+      const fill = colors[row[x] as string]
+      if (fill) out += `<rect x="${x * size}" y="${y * size}" width="${size}" height="${size}" fill="${fill}"/>`
+    }
+  })
+  return out
+}
+
+const visitorSvg = () => {
+  const v = VISITORS[THEME]
+  if (!v || LIVELINESS === 'quiet') return ''
+  const r = rng(909 + THEME.length)
+  const w = v.frames[0][0]!.length * v.size
+  const h = v.frames[0].length * v.size
+  const every = LIVELINESS === 'lively' ? Math.round(v.every * 0.6) : v.every
+  const share = (v.cross / every).toFixed(4)
+  const rightward = r() < 0.5
+  const y = v.y === 'ground' ? GY - h : v.y === 'deep' ? Math.round(GY * 0.35) : Math.round(10 + r() * 22)
+  const from = rightward ? -w - 4 : W + 4
+  const to = rightward ? W + 4 : -w - 4
+  const at = `begin="${(r() * every).toFixed(1)}s"`
+  const timing = `dur="${every}s" ${at} repeatCount="indefinite"`
+  const travel = `<animateTransform attributeName="transform" type="translate" values="${from} ${y};${to} ${y};${to} ${y}" keyTimes="0;${share};1" ${timing}/>`
+  const shown = `<animate attributeName="opacity" values="${v.opacity ?? 1};0" keyTimes="0;${share}" calcMode="discrete" ${timing}/>`
+  const step = v.y === 'ground' ? 0.3 : 0.25
+  const frames = v.frames.map((rows, i) => `<g${i ? ' opacity="0"' : ''}><animate attributeName="opacity" values="${i ? '0;1' : '1;0'}" keyTimes="0;0.5" dur="${step * 2}s" calcMode="discrete" repeatCount="indefinite"/>${spriteRects(rows, v.colors, v.size)}</g>`).join('')
+  const bob = v.bob ? `<animateTransform attributeName="transform" type="translate" values="0 0;0 ${-v.bob};0 0" dur="${v.y === 'ground' ? 0.6 : 1.6}s" calcMode="spline" keySplines="${EASE};${EASE}" repeatCount="indefinite"/>` : ''
+  const roll = v.roll ? `<animateTransform attributeName="transform" type="rotate" values="0 ${w / 2} ${h / 2};${rightward ? 360 : -360} ${w / 2} ${h / 2}" dur="1s" repeatCount="indefinite"/>` : ''
+  const facing = rightward ? '' : ` transform="translate(${w} 0) scale(-1 1)"`
+  return `<g class="visitor" shape-rendering="crispEdges" opacity="0"><title>${v.title}</title>${shown}${travel}<g>${bob}<g${facing}><g>${roll}${frames}</g></g></g></g>`
+}
+
 const scenery = (now: number, all: Avatar[]) => {
   const t = THEMES[THEME] ?? (THEMES['meadow'] as Theme)
   const r = rng(4242)
@@ -1156,7 +1285,7 @@ const scenery = (now: number, all: Avatar[]) => {
     const phase = ((now / 1000 + i * 37) % dur).toFixed(1)
     s += `<g class="cl" shape-rendering="crispEdges" fill="${t.cloud}" opacity="0.45"><g><animateTransform attributeName="transform" type="translate" values="-60 ${y};${W + 20} ${y}" dur="${dur}s" begin="-${phase}s" repeatCount="indefinite"/><rect x="6" y="6" width="36" height="6"/><rect x="0" y="12" width="48" height="6"/><rect x="12" y="0" width="18" height="6"/></g></g>`
   }
-  return s + (THEME !== 'city' && t.extra ? t.extra(now) : '') + ambient()
+  return s + (THEME !== 'city' && t.extra ? t.extra(now) : '') + ambient() + visitorSvg()
 }
 
 const sky = () => {
